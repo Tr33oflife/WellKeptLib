@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.0.0)
+# Install — Ultra.cc (WellKeptLib v1.1.0)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,36 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.1.0:** the Organize tab gains a second mode —
+**Build Jellyfin library (hardlinks)**. Point it at a source
+folder (your downloads stay exactly where they are) and a
+separate target folder; the preview plans the same Jellyfin
+layout Move mode would produce, and Apply creates
+**hardlinks** in the target instead of moving anything.
+Originals are never modified, renamed, or deleted — seeding
+is unaffected, and the linked library costs no extra disk
+space (a hardlink is another name for the same file). The
+preview proves per file, before anything is created, that
+source and target share a filesystem — hardlinks cannot
+cross filesystems or volumes, and anything that can't be
+proven is listed as *unlinkable* with the reason. When
+several copies want one name, the preview shows which copy
+wins and why (resolution → HDR → bitrate → size), lists the
+alternates, and refuses to pick when the copies' durations
+say they may be different cuts. Every build writes an undo
+record first (`link-manifests/` in the data folder); Undo
+removes only the links that build created and verified — a
+target that was replaced since is left untouched and
+reported. **Setup guidance:** keep the target folder
+OUTSIDE your scan roots; if it sits inside one, the preview
+warns you — a scan would list the linked library alongside
+the originals (the hardlink-aware counts keep the numbers
+honest, but the library view gets noisy). Two honest
+caveats: editing a file through either name edits the
+shared content, because they are the same file; and
+deleting the original does not free disk space while a
+link to it remains.
 
 ## Security note (optional but read it)
 

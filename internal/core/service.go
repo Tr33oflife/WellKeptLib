@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.0.0"
+const Version = "1.1.0"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -116,6 +116,12 @@ type Service struct {
 	// in-memory only: a restart means "preview again". The undo
 	// manifests, by contrast, live on disk and survive restarts.
 	orgPlans map[string]*OrganizePlan
+	// linkPlans holds link-mode plans computed this session,
+	// keyed by plan ID (v1.1.0, see linkapply.go) — a SEPARATE
+	// store from orgPlans so a move plan can never be submitted
+	// to a link endpoint or the reverse. In-memory only, like
+	// move plans; link manifests live on disk.
+	linkPlans map[string]*LinkPlan
 	// signins holds in-flight plex.tv sign-in sessions (v0.3.1, see
 	// plex_auth.go), keyed by an opaque session ID. Memory only by
 	// design: a session carries the user's ACCOUNT token between

@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -104,20 +104,48 @@ double-click `.exe` on Windows.
   original layout — weeks later, if you like. Unidentified
   files are left in place and listed with reasons; collisions
   are flagged, never overwritten.
+- **…or build the library as hardlinks (new in 1.1.0).** A
+  second Organize mode builds the same Jellyfin layout under
+  a destination folder you choose as **hardlinks** to the
+  untouched originals: your existing folders (and any seeding
+  paths) stay exactly as they are, and the new library costs
+  no extra disk space. The preview proves feasibility up
+  front from the scan's device/inode data and sorts every
+  file: links to create, already linked (re-running a build
+  is a no-op), collisions (the keeper is picked by the same
+  ranking as Duplicates — resolution → HDR → bitrate → size;
+  copies whose durations suggest different cuts are left
+  **unresolved**, never auto-linked), unidentified files,
+  unlinkable files (cross-device or unknown identity, with
+  the reason), and target conflicts — a real file already at
+  a target is never overwritten or deleted. Apply writes its
+  manifest first and creates directories + links only. Undo
+  removes only links that still point at the recorded
+  source; a target you replaced with a real file is skipped
+  and reported. Keep the destination **outside** your scan
+  roots (the UI warns when it isn't) so the linked copies
+  don't show up as duplicates of themselves. Hardlinks need
+  source and destination on the **same filesystem**, and
+  deleting an original doesn't free space while a link to it
+  remains — both stated in the UI.
 
 Scanning is always read-only. The only features that touch
-files are Organize (preview → apply → undo), the guarded
-per-file deletes on the Health and Duplicates tabs, and the
-subtitle wizard's guarded actions (relabel with undo, delete,
-and placing a downloaded subtitle beside its media file —
-never overwriting). File-changing actions validate against
-the current findings and write audit logs in the data folder
-(`deleted-actions.json`, `subtitle-actions.json`,
-`subtitle-manifests/`).
+files are Organize (preview → apply → undo; the link mode
+creates hardlinks in the destination folder only — sources
+are never modified, and its undo verifies each link still
+points at the recorded source before removing it), the
+guarded per-file deletes on the Health and Duplicates tabs,
+and the subtitle wizard's guarded actions (relabel with
+undo, delete, and placing a downloaded subtitle beside its
+media file — never overwriting). File-changing actions
+validate against the current findings and write audit logs
+in the data folder (`deleted-actions.json`,
+`subtitle-actions.json`, `subtitle-manifests/`,
+`link-manifests/`).
 
 ## Install
 
-Get `WellKeptLib-1.0.0-public.zip` from the
+Get `WellKeptLib-1.1.0-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -219,7 +247,12 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.0.0 binaries. The public edition was produced from a
+  1.1.0 binaries. One disclosed divergence, in a test file
+  only: the fixture lookup helper additionally accepts this
+  repository's fixtures layout, and the fixture generator
+  script ships in `fixtures/` — no product code or test
+  assertion differs from the development tree. The public
+  edition was produced from a
   private codebase by a scripted scrub gate: a denylist
   (personal names, usernames, hostnames, domains, private
   connection details) is grepped over the whole tree *and* the
@@ -255,6 +288,7 @@ installed:
 
 ```sh
 go build -trimpath -o plex-file-manager .
+bash fixtures/generate.sh   # synthetic test library (needs ffmpeg)
 go test ./...
 ```
 
@@ -267,28 +301,30 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.0.0)
+## Verification (what was actually checked for 1.1.0)
 
-- Go test suite: **207 tests, all passing** (re-run on this
-  published tree); `go vet` and `gofmt` clean; race detector
-  clean over the new concurrency surface (scheduler, webhook,
-  history, data-dir lock, OpenSubtitles).
+- Go test suite: **246 top-level tests, all passing**,
+  counted as `--- PASS` lines from `go test -v ./...` on
+  this published tree (the development record counts 245 by
+  a slightly different method; the one-test difference is
+  counting, not content — zero failures either way);
+  `go vet` and `gofmt` clean; race detector clean over the
+  new link tests. 38 of the tests are new for the link mode,
+  and no pre-existing test expectation changed.
 - Page checks: every element id the page script looks up
-  resolves (144 looked up / 166 defined); a Node render
-  harness exercising the real page script passes **67/67**.
-- Shipped-binary smoke: **29/29** on the base build (boot,
-  automation settings, fixture baseline, a real hardlink
-  added to the fixture library and measured, webhook delivery
-  received counts-only, report numbers equal to the API over
-  HTTP, CSV + HTML exports, scan-history records and deltas,
-  CLI exit codes 0, 3, and both lock-refusal cases). The
-  public package's binary is re-smoked after the scrub
-  rebuild, and the public installer walk passes **12/12**.
-- Installer walks on the base build (fresh proxy + LAN,
-  update, broken-update rollback, uninstall): **36/36**.
-  Honest limit: those walks run the real binaries and the
-  real installer logic, but `systemctl` itself is shimmed —
-  no real systemd ran in the sandbox.
+  resolves (156 looked up / 179 defined); a Node render
+  harness exercising the real page script passes **100/100**,
+  including all 33 link-mode checks.
+- Shipped-binary smoke: **41/41**, run on the base build and
+  re-run on the public package's extracted binary — including
+  the source-untouched proof: full source-tree snapshots
+  (path, hash, size, mtime, device, inode, link count) are
+  identical after a link build and after build + undo
+  (link counts go 1 → 2 → 1 over HTTP).
+- Installer walk on this public package: **12/12**. Honest
+  limit: installer walks run the real binaries and the real
+  installer logic, but `systemctl` itself is shimmed — no
+  real systemd ran in the sandbox.
 - Scrub gate over the extracted release ZIP (tree + binary
   strings): **zero hits** on the full denylist (personal
   names, usernames, hostnames, domains, private connection
@@ -300,6 +336,17 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 ## Known limitations
 
 - No built-in authentication (see the security warning).
+- **The hardlink library mode is not yet live-proven.**
+  Real cross-device (EXDEV) failures and Windows hardlink
+  execution are verified at an injected-function test seam
+  — they cannot execute in the build environment — and the
+  mode has not yet had a live run on real hardware (the
+  maintainer's own slot/Windows test is pending). The Linux
+  same-filesystem path is fully test- and smoke-proven,
+  including the source-untouched invariant. Hardlinks also
+  inherently require source and destination on the same
+  filesystem, and a destination inside your scan roots makes
+  linked copies appear as duplicates (the UI warns).
 - **OpenSubtitles is not yet live-verified.** No real API key
   was available in the build environment, so the client is
   verified against a mock implementing the documented
@@ -321,6 +368,23 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.1.0
+
+- **Organize gains a hardlink mode:** build the Jellyfin
+  layout as hardlinks under a separate destination folder;
+  originals are never touched (proven by full-tree snapshots
+  in tests and smoke). Preview classifies every file
+  (create / already-linked / collision with keeper ranking /
+  unresolved / not-identified / unlinkable / target-conflict),
+  Apply is manifest-first and incremental, Undo removes only
+  links still pointing at their recorded source.
+- Symlink fallback was considered and rejected: links would
+  rot when sources move, and several players resolve
+  symlinks inconsistently. Hardlinks keep every path real.
+- No other changes: scanner, duplicates, subtitles, reports,
+  scheduler, webhook, and CLI behavior are identical to
+  1.0.0, and every pre-existing test passes unmodified.
 
 ## Release notes — 1.0.0 (changes since 0.7.0)
 

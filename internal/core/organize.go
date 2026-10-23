@@ -103,6 +103,20 @@ type orgFile struct {
 	Stem    string // filename without extension
 	Ext     string // lower-case extension, with dot
 	ExtOrig string // extension exactly as it appears in the name
+	// Size / ModTimeUnixNano / storage identity (v1.1.0,
+	// LINK-LIBRARY-SPEC §6.2): captured from the walk's own
+	// os.FileInfo via fileIdentityForFn — the same v1.0.0
+	// identity helper the scanner uses, so link-mode preview
+	// can prove same-filesystem feasibility without a scan.
+	// IdentityKnown is false when the platform/filesystem
+	// cannot report identity (Dev/Ino are then zero = unknown,
+	// never guessed). Move mode does not read these fields.
+	Size            int64
+	ModTimeUnixNano int64
+	Dev             uint64
+	Ino             uint64
+	Nlink           uint64
+	IdentityKnown   bool
 }
 
 // videoPlan is one video file plus the planner's verdict for it.
@@ -113,7 +127,10 @@ type videoPlan struct {
 	TargetDir  string // folder the video lands in
 	TargetStem string // target filename without extension (sidecar naming base)
 	WorkDir    string // target work folder (movie folder / series folder)
-	Status     string // move | already | unidentified
+	Status     string // move mode: move | already | unidentified | collision
+	// link mode (linkplan.go) reuses this record with its own
+	// statuses: create | linked | unidentified | unlinkable |
+	// conflict | alternate | ineligible
 }
 
 // sanitizeSegment makes one generated path segment safe for Jellyfin
@@ -202,10 +219,13 @@ func newPlanID() string {
 	return "plan-" + time.Now().UTC().Format("20060102-150405") + suffix
 }
 
-// buildVideoTarget computes the Jellyfin target for one parsed video.
-// It returns the target facts, or a non-empty reason when the file is
-// unidentified (the reason strings are user-facing — keep them plain).
-func buildVideoTarget(absRoot string, f orgFile, pn ParsedName) (target, targetDir, targetStem, workDir, reason string) {
+// buildVideoTarget computes the Jellyfin target for one parsed video
+// under destinationRoot — the source root in move mode, the separate
+// target root in link mode (v1.1.0, LINK-LIBRARY-SPEC §6.1: one
+// layout implementation, two destinations). It returns the target
+// facts, or a non-empty reason when the file is unidentified (the
+// reason strings are user-facing — keep them plain).
+func buildVideoTarget(destinationRoot string, f orgFile, pn ParsedName) (target, targetDir, targetStem, workDir, reason string) {
 	switch pn.Kind {
 	case "movie":
 		if pn.Year == 0 {
@@ -216,7 +236,7 @@ func buildVideoTarget(absRoot string, f orgFile, pn ParsedName) (target, targetD
 			return "", "", "", "", "title is empty after removing banned characters"
 		}
 		folder := fmt.Sprintf("%s (%d)", title, pn.Year)
-		targetDir = filepath.Join(absRoot, folder)
+		targetDir = filepath.Join(destinationRoot, folder)
 		targetStem = folder
 		target = filepath.Join(targetDir, folder+f.ExtOrig)
 		workDir = targetDir
@@ -241,7 +261,7 @@ func buildVideoTarget(absRoot string, f orgFile, pn ParsedName) (target, targetD
 		if et := sanitizeSegment(episodeTitleFromName(f.Stem)); et != "" {
 			fname += " - " + et
 		}
-		workDir = filepath.Join(absRoot, seriesFolder)
+		workDir = filepath.Join(destinationRoot, seriesFolder)
 		targetDir = filepath.Join(workDir, fmt.Sprintf("Season %02d", pn.Season))
 		targetStem = fname
 		target = filepath.Join(targetDir, fname+f.ExtOrig)
@@ -254,6 +274,54 @@ func buildVideoTarget(absRoot string, f orgFile, pn ParsedName) (target, targetD
 	default:
 		return "", "", "", "", "couldn't identify this file"
 	}
+}
+
+// collectOrgFiles walks an organize source root and collects every
+// regular file, grouped by folder, with size / mtime / storage
+// identity captured from the walk's own FileInfo (v1.1.0). Symlinks
+// are never followed (same discipline as the scanner): a symlinked
+// folder is not descended into at all, and symlinked FILES are
+// returned separately so each planner can list them as skipped in
+// its own shape. Shared by the move planner and the link planner
+// (LINK-LIBRARY-SPEC §6.1: one walk implementation).
+func collectOrgFiles(absRoot string) (filesByDir map[string][]orgFile, symlinked []orgFile, err error) {
+	filesByDir = map[string][]orgFile{}
+	err = filepath.WalkDir(absRoot, func(path string, d os.DirEntry, werr error) error {
+		if werr != nil {
+			if path == absRoot {
+				return werr
+			}
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			symlinked = append(symlinked, orgFile{Path: path, Dir: filepath.Dir(path), Name: d.Name()})
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, ierr := d.Info()
+		if ierr != nil || !info.Mode().IsRegular() {
+			return nil
+		}
+		name := d.Name()
+		extOrig := filepath.Ext(name)
+		f := orgFile{
+			Path: path, Dir: filepath.Dir(path), Name: name,
+			Stem: strings.TrimSuffix(name, extOrig), Ext: strings.ToLower(extOrig), ExtOrig: extOrig,
+			Size: info.Size(), ModTimeUnixNano: info.ModTime().UnixNano(),
+		}
+		f.Dev, f.Ino, f.Nlink, f.IdentityKnown = fileIdentityForFn(info, path)
+		filesByDir[f.Dir] = append(filesByDir[f.Dir], f)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return filesByDir, symlinked, nil
 }
 
 // PlanOrganize computes the full dry-run plan for one root folder.
@@ -280,47 +348,14 @@ func PlanOrganize(root string) (*OrganizePlan, error) {
 		Skipped:          []OrganizeSkip{},
 	}
 
-	// ---- Walk: collect every regular file, grouped by folder. ----
-	// Symlinks are never followed (same discipline as the scanner):
-	// a symlinked file is listed as skipped, a symlinked folder is
-	// not descended into at all.
-	filesByDir := map[string][]orgFile{}
-	var walkErr error
-	err := filepath.WalkDir(absRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			if path == absRoot {
-				return err
-			}
-			return nil
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			plan.Skipped = append(plan.Skipped, OrganizeSkip{Path: path, Reason: "symbolic link — left alone"})
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, ierr := d.Info()
-		if ierr != nil || !info.Mode().IsRegular() {
-			return nil
-		}
-		name := d.Name()
-		extOrig := filepath.Ext(name)
-		f := orgFile{
-			Path: path, Dir: filepath.Dir(path), Name: name,
-			Stem: strings.TrimSuffix(name, extOrig), Ext: strings.ToLower(extOrig), ExtOrig: extOrig,
-		}
-		filesByDir[f.Dir] = append(filesByDir[f.Dir], f)
-		return nil
-	})
+	// ---- Walk: collect every regular file, grouped by folder
+	// (shared with the link planner — see collectOrgFiles). ----
+	filesByDir, symlinked, err := collectOrgFiles(absRoot)
 	if err != nil {
-		walkErr = err
+		return nil, fmt.Errorf("cannot read the folder %s: %w", absRoot, err)
 	}
-	if walkErr != nil {
-		return nil, fmt.Errorf("cannot read the folder %s: %w", absRoot, walkErr)
+	for _, sf := range symlinked {
+		plan.Skipped = append(plan.Skipped, OrganizeSkip{Path: sf.Path, Reason: "symbolic link — left alone"})
 	}
 
 	// ---- Pass 1: videos. Parse identity, build targets, classify. ----
@@ -446,24 +481,44 @@ func PlanOrganize(root string) (*OrganizePlan, error) {
 	return plan, nil
 }
 
+// sidecarVideoMatches returns the videos in dirVideos whose filename
+// stem the given file name extends with a separator — the basename
+// sidecar rule (Film.en.srt, Film-thumb.jpg belong to Film.mkv). The
+// separator check keeps "Film2.srt" from attaching to "Film.mkv".
+// Shared by the move planner and the link planner
+// (LINK-LIBRARY-SPEC §6.1: one sidecar matcher).
+func sidecarVideoMatches(name string, dirVideos []*videoPlan) []*videoPlan {
+	var matches []*videoPlan
+	for _, vp := range dirVideos {
+		stem := vp.File.Stem
+		if strings.HasPrefix(name, stem) && len(name) > len(stem) {
+			if c := name[len(stem)]; c == '.' || c == '-' || c == '_' {
+				matches = append(matches, vp)
+			}
+		}
+	}
+	return matches
+}
+
+// isFolderArtworkFile reports whether f has a folder-artwork shape:
+// a well-known artwork stem with an image extension (or .nfo).
+// Shared by both planners (LINK-LIBRARY-SPEC §6.1).
+func isFolderArtworkFile(f orgFile) bool {
+	return artworkStems[strings.ToLower(f.Stem)] && (organizeImageExts[f.Ext] || f.Ext == ".nfo")
+}
+
 // planNonVideo classifies one non-video file: basename sidecar of a
 // moving video, folder artwork for a single-work folder, an orphaned
 // subtitle/.nfo (listed as skipped so nothing is silently stranded),
 // or a file the organizer simply does not manage (ignored, unlisted).
 func planNonVideo(plan *OrganizePlan, f orgFile, dirVideos, dirMoving []*videoPlan) {
 	// Basename sidecar: the filename starts with a video's stem plus
-	// a separator (Film.en.srt, Film-thumb.jpg). The separator check
-	// keeps "Film2.srt" from attaching to "Film.mkv".
-	var matches, movingMatches []*videoPlan
-	for _, vp := range dirVideos {
-		stem := vp.File.Stem
-		if strings.HasPrefix(f.Name, stem) && len(f.Name) > len(stem) {
-			if c := f.Name[len(stem)]; c == '.' || c == '-' || c == '_' {
-				matches = append(matches, vp)
-				if vp.Status == "move" {
-					movingMatches = append(movingMatches, vp)
-				}
-			}
+	// a separator (Film.en.srt, Film-thumb.jpg).
+	matches := sidecarVideoMatches(f.Name, dirVideos)
+	var movingMatches []*videoPlan
+	for _, vp := range matches {
+		if vp.Status == "move" {
+			movingMatches = append(movingMatches, vp)
 		}
 	}
 	if len(matches) > 0 {
@@ -490,7 +545,7 @@ func planNonVideo(plan *OrganizePlan, f orgFile, dirVideos, dirMoving []*videoPl
 	// Folder artwork: a known artwork name (poster.jpg, tvshow.nfo…)
 	// in a folder whose MOVING videos all belong to one work follows
 	// that work, keeping its own filename.
-	if artworkStems[strings.ToLower(f.Stem)] && (organizeImageExts[f.Ext] || f.Ext == ".nfo") {
+	if isFolderArtworkFile(f) {
 		works := map[string]bool{}
 		for _, vp := range dirMoving {
 			works[vp.WorkDir] = true

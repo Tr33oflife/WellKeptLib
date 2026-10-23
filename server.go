@@ -80,6 +80,12 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	mux.HandleFunc("POST /api/organize/apply", s.handleOrganizeApply)
 	mux.HandleFunc("POST /api/organize/undo", s.handleOrganizeUndo)
 	mux.HandleFunc("GET /api/organize/manifests", s.handleOrganizeManifests)
+	// v1.1.0 — the hardlink library mode: parallel endpoints,
+	// never overloaded move semantics (LINK-LIBRARY-SPEC §15.1).
+	mux.HandleFunc("POST /api/organize/links/plan", s.handleLinkPlan)
+	mux.HandleFunc("POST /api/organize/links/apply", s.handleLinkApply)
+	mux.HandleFunc("POST /api/organize/links/undo", s.handleLinkUndo)
+	mux.HandleFunc("GET /api/organize/links/manifests", s.handleLinkManifests)
 	// v0.9.0 — gaps, coverage, and the subtitle wizard (W1–W3):
 	// the Step 0 overview, the dismissal store, and the external
 	// fixes (relabel via manifest + guarded delete). No
@@ -549,6 +555,74 @@ func (s *server) handleOrganizeUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleLinkPlan -> Service.LinkPlan (v1.1.0).
+// Body: {source_root, target_root}. Returns the full dry-run
+// link plan (nothing has been created).
+func (s *server) handleLinkPlan(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SourceRoot string `json:"source_root"`
+		TargetRoot string `json:"target_root"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	plan, err := s.svc.LinkPlan(body.SourceRoot, body.TargetRoot)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, plan)
+}
+
+// handleLinkApply -> Service.LinkApply (v1.1.0).
+// Body: {plan_id}. Per-item skips and failures come back in-band
+// in the result; only hard errors (unknown plan, scan running,
+// another file operation) are HTTP errors.
+func (s *server) handleLinkApply(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		PlanID string `json:"plan_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	res, err := s.svc.LinkApply(body.PlanID)
+	if err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleLinkUndo -> Service.LinkUndo (v1.1.0).
+// Body: {manifest_id}. Per-entry skips come back in-band.
+func (s *server) handleLinkUndo(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ManifestID string `json:"manifest_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	res, err := s.svc.LinkUndo(body.ManifestID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleLinkManifests -> Service.LinkManifests (v1.1.0).
+func (s *server) handleLinkManifests(w http.ResponseWriter, r *http.Request) {
+	list, err := s.svc.LinkManifests()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"manifests": list})
 }
 
 // handleOrganizeManifests -> Service.OrganizeManifests

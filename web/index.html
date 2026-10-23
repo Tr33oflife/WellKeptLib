@@ -488,10 +488,21 @@
   <section class="panel" id="panel-organize">
     <h2>Organize into Jellyfin folders</h2>
     <p class="dim small" style="margin-top:0;max-width:840px">This is the one part of the app that changes files on disk — always from a preview, always undoable. <b>Preview first — nothing moves until you press Apply. Every organize can be undone.</b></p>
-    <p class="dim small" style="max-width:840px">Movies become <span class="mono">Title (Year)/Title (Year).ext</span>; episodes become <span class="mono">Series/Season 01/Series - S01E01 - Episode Title.ext</span> (Season 00 for specials, S01E01-E02 for multi-episode files). Subtitles, .nfo files and folder artwork travel with their video. Anything the app can't identify stays exactly where it is and is listed under the plan; name collisions are flagged and never overwritten. Scanning stays read-only — only this tab moves files, and only inside the folder you pick.</p>
+    <p class="dim small" style="max-width:840px">Movies become <span class="mono">Title (Year)/Title (Year).ext</span>; episodes become <span class="mono">Series/Season 01/Series - S01E01 - Episode Title.ext</span> (Season 00 for specials, S01E01-E02 for multi-episode files). Subtitles, .nfo files and folder artwork travel with their video. Anything the app can't identify stays exactly where it is and is listed under the plan; name collisions are flagged and never overwritten. Scanning stays read-only — only this tab changes files, and only in the ways the chosen mode describes.</p>
+    <div class="toolbar" style="margin:10px 0 2px">
+      <span class="small dim" style="margin-right:4px">Mode:</span>
+      <button id="org-mode-move" class="primary">Move files</button>
+      <button id="org-mode-link">Build link library</button>
+    </div>
+    <div id="org-link-intro" style="display:none">
+      <p class="dim small" style="max-width:840px">Build link library creates a clean Jellyfin folder tree in the target folder and fills it with hardlinks to the source files. The originals stay exactly where they are, so existing paths — including seeding paths — keep working.</p>
+      <p class="dim small" style="max-width:840px">A hardlink is another name for the same file, not a copy. The source and target must be on the same filesystem or volume.</p>
+      <p class="dim small" style="max-width:840px">Editing the file through either name edits the same shared content. Deleting the original name does not free the file's space while a link remains; the space is freed only when the last name for that file is deleted.</p>
+      <p class="dim small" style="max-width:840px">Apply creates folders and links only. It never moves, renames, copies, deletes, or edits an original.</p>
+    </div>
     <div class="toolbar" style="align-items:flex-end">
       <div style="flex:1;min-width:260px">
-        <label for="org-root" style="margin-top:0">Folder to organize</label>
+        <label for="org-root" id="org-root-label" style="margin-top:0">Folder to organize</label>
         <input id="org-root" style="width:100%" placeholder="e.g. D:\Media\Downloads or /home/you/media/downloads">
       </div>
       <div>
@@ -500,11 +511,26 @@
       </div>
       <button class="primary" id="btn-org-preview">Preview plan</button>
     </div>
+    <div class="toolbar" id="org-link-target-row" style="align-items:flex-end;display:none">
+      <div style="flex:1;min-width:260px">
+        <label for="link-target" style="margin-top:0">Target folder (the link library is built here)</label>
+        <input id="link-target" style="width:100%" placeholder="e.g. D:\Media\Jellyfin or /home/you/media/jellyfin">
+      </div>
+      <div>
+        <label for="link-target-pick" style="margin-top:0">…or pick a scan root</label>
+        <select id="link-target-pick"><option value="">Use a scan root…</option></select>
+      </div>
+    </div>
     <div id="org-plan"></div>
+    <div id="link-plan" style="display:none"></div>
     <h2 style="margin-top:28px">Past organizes</h2>
     <p class="dim small" style="margin-top:0;max-width:840px">Undo records (manifests) are kept in the app's data folder and survive restarts. Undo restores the exact original layout and never overwrites a file that has since appeared at an original location.</p>
     <div id="org-manifests"></div>
     <div class="empty" id="org-manifests-empty">No organizes yet.</div>
+    <h2 style="margin-top:28px">Past link builds</h2>
+    <p class="dim small" style="margin-top:0;max-width:840px">Undo removes only the links a build recorded, and only while each target still points to the recorded source file — originals are never touched. Put the target folder outside every scan root if you can: inside one, scans list every linked file a second time.</p>
+    <div id="link-manifests"></div>
+    <div class="empty" id="link-manifests-empty">No link builds yet.</div>
   </section>
 
   <!-- ================= Settings ================= -->
@@ -734,6 +760,10 @@ const api = {
   organizeApply:     (plan_id) => jfetch("api/organize/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({plan_id})}),
   organizeUndo:      (manifest_id) => jfetch("api/organize/undo", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({manifest_id})}),
   organizeManifests: () => jfetch("api/organize/manifests"),
+  linkPlan:          (source_root, target_root) => jfetch("api/organize/links/plan", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({source_root, target_root})}),
+  linkApply:         (plan_id) => jfetch("api/organize/links/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({plan_id})}),
+  linkUndo:          (manifest_id) => jfetch("api/organize/links/undo", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({manifest_id})}),
+  linkManifests:     () => jfetch("api/organize/links/manifests"),
   // v0.9.0 — gaps, coverage, and the subtitle wizard (W1–W3).
   gaps:        () => jfetch("api/gaps"),
   coverage:    () => jfetch("api/coverage"),
@@ -972,6 +1002,9 @@ async function refreshState(){
   const pick = $("org-root-pick"), curPick = pick.value;
   const wantPick = '<option value="">Use a scan root…</option>' + (st.roots||[]).map(r => '<option value="' + esc(r) + '">' + esc(r) + "</option>").join("");
   if (pick.innerHTML !== wantPick){ pick.innerHTML = wantPick; pick.value = curPick; }
+  // Link mode: the target folder gets the same scan-root shortcut.
+  const tPick = $("link-target-pick"), curTPick = tPick.value;
+  if (tPick.innerHTML !== wantPick){ tPick.innerHTML = wantPick; tPick.value = curTPick; }
   const sc = st.scan, sum = sc.summary || {};
   const pct = sc.total ? Math.round(100 * (sc.done||0) / sc.total) : 0;
   $("progbar").style.width = (sc.running ? pct : 100) + "%";
@@ -2297,7 +2330,13 @@ $("org-root-pick").addEventListener("change", () => {
   const v = $("org-root-pick").value;
   if (v) $("org-root").value = v;
 });
-$("btn-org-preview").addEventListener("click", previewOrganize);
+$("link-target-pick").addEventListener("change", () => {
+  const v = $("link-target-pick").value;
+  if (v) $("link-target").value = v;
+});
+$("btn-org-preview").addEventListener("click", () => {
+  if (orgMode === "link") previewLinkPlan(); else previewOrganize();
+});
 
 // previewOrganize asks the backend for a dry-run plan and renders it.
 async function previewOrganize(){
@@ -2434,6 +2473,230 @@ async function refreshOrganizeManifests(){
       "<td>" + (m.undone ? "" : '<button class="small danger org-undo" data-mid="' + esc(m.id) + '">Undo</button>') + "</td></tr>").join("") +
     "</tbody></table>" : "";
   document.querySelectorAll(".org-undo").forEach(b => b.addEventListener("click", () => undoOrganize(b.dataset.mid)));
+}
+
+/* ================= Organize — link mode (v1.1.0) =================
+   Build Jellyfin library (hardlinks): the same plan the user
+   reviews is held server-side by ID; Apply creates folders and
+   hardlinks ONLY (originals never move), records a link
+   manifest before the first creation, and Undo removes a target
+   only while it still points to the recorded source file. The
+   link plan and manifest list are fully separate from move
+   mode's, so the two can never be submitted to each other. */
+let orgMode = "move";       // move | link
+let linkPlanData = null;    // the last previewed link plan (or null)
+let linkManifestID = "";    // manifest produced by this session's last link Apply
+
+$("org-mode-move").addEventListener("click", () => setOrgMode("move"));
+$("org-mode-link").addEventListener("click", () => setOrgMode("link"));
+
+// setOrgMode switches the Organize tab between Move files and
+// Build link library: mode-specific copy, the target row, the
+// source label, the preview button's meaning, and which plan
+// view is visible.
+function setOrgMode(m){
+  orgMode = m;
+  const link = m === "link";
+  $("org-mode-move").className = link ? "" : "primary";
+  $("org-mode-link").className = link ? "primary" : "";
+  $("org-link-intro").style.display = link ? "block" : "none";
+  $("org-link-target-row").style.display = link ? "flex" : "none";
+  $("org-root-label").textContent = link ? "Source folder (originals stay here)" : "Folder to organize";
+  $("btn-org-preview").textContent = link ? "Preview link plan" : "Preview plan";
+  $("org-plan").style.display = link ? "none" : "block";
+  $("link-plan").style.display = link ? "block" : "none";
+}
+
+// linkRelSrc / linkRelTgt render a path relative to the link
+// plan's source / target root for readability.
+function linkRelSrc(p){
+  if (linkPlanData && linkPlanData.source_root && p.indexOf(linkPlanData.source_root) === 0)
+    return p.slice(linkPlanData.source_root.length).replace(/^[\\/]+/, "") || ".";
+  return p;
+}
+function linkRelTgt(p){
+  if (linkPlanData && linkPlanData.target_root && p.indexOf(linkPlanData.target_root) === 0)
+    return p.slice(linkPlanData.target_root.length).replace(/^[\\/]+/, "") || ".";
+  return p;
+}
+
+// previewLinkPlan asks the backend for a dry-run link plan and
+// renders it. A preview creates nothing.
+async function previewLinkPlan(){
+  const src = $("org-root").value.trim();
+  const tgt = $("link-target").value.trim();
+  const box = $("link-plan");
+  if (!src){ box.innerHTML = '<p style="color:var(--red)">Enter a source folder first.</p>'; return; }
+  if (!tgt){ box.innerHTML = '<p style="color:var(--red)">Enter a target folder first.</p>'; return; }
+  box.innerHTML = '<p class="dim">Building the link plan… (reading both folders — creating nothing)</p>';
+  try{
+    linkPlanData = await api.linkPlan(src, tgt);
+    linkManifestID = "";
+    renderLinkPlan("");
+  }catch(e){
+    linkPlanData = null;
+    box.innerHTML = '<p style="color:var(--red)">' + esc(e.message) + "</p>";
+  }
+}
+
+// renderLinkPlan paints the current link plan: count chips,
+// then Links to create, Already linked, Collisions, Target
+// conflicts, Unlinkable, Couldn't identify, Skipped (empty
+// sections omitted), the scan-overlap warning, and the
+// Build / Undo row. resultHTML is the status shown under it
+// (also where the Apply report lands).
+function renderLinkPlan(resultHTML){
+  const box = $("link-plan");
+  if (!linkPlanData){ box.innerHTML = ""; return; }
+  const p = linkPlanData, st = p.stats || {};
+  let h = '<div class="chips" style="margin:14px 0 4px">' +
+    '<span class="chip">Links to create <b>' + (st.links_to_create||0) + "</b> — " + (st.movies||0) + " movies · " + (st.episodes||0) + " episodes · " + (st.sidecars||0) + " sidecars · " + (st.artwork||0) + " artwork</span>" +
+    '<span class="chip">Already linked <b>' + (st.already_linked||0) + "</b></span>" +
+    '<span class="chip warn">Collisions <b>' + (st.collision_groups||0) + "</b> groups · " + (st.alternates||0) + " alternates</span>" +
+    '<span class="chip warn">Target conflicts <b>' + (st.target_conflict_targets||0) + "</b> targets</span>" +
+    '<span class="chip warn">Unlinkable <b>' + (st.unlinkable||0) + "</b></span>" +
+    '<span class="chip warn">Couldn\'t identify <b>' + (st.not_identified||0) + "</b></span>" +
+    '<span class="chip">Skipped <b>' + (st.skipped||0) + "</b></span></div>";
+  const attached = a => (a && a.length) ? '<div class="small dim">withheld with it: ' + a.map(x => esc(linkRelSrc(x))).join(", ") + "</div>" : "";
+  if ((p.links_to_create||[]).length){
+    h += '<h3 style="margin:14px 0 6px">Links to create</h3><div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
+      p.links_to_create.map(e => '<tr><td><span class="badge b-blue">' + esc(e.kind) + '</span></td><td class="mono dim">' + esc(linkRelSrc(e.source)) + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.already_linked||[]).length){
+    h += '<h3 style="margin:16px 0 6px">Already linked</h3><p class="dim small" style="margin:0 0 6px">These targets already hold a hardlink to the source (device + inode identity matched). Apply leaves them exactly as they are.</p><div style="overflow-x:auto"><table><thead><tr><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
+      p.already_linked.map(e => '<tr><td class="mono dim">' + esc(linkRelSrc(e.source)) + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.collisions||[]).length){
+    h += '<h3 style="margin:16px 0 6px;color:var(--amber2)">Collisions — more than one source wants one name</h3><div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Decision</th></tr></thead><tbody>' +
+      p.collisions.map(c => {
+        let d = "";
+        if (c.keeper_source){
+          d += '<span class="badge b-green">Keeper</span> <span class="mono">' + esc(linkRelSrc(c.keeper_source)) + "</span>";
+          if (c.ranking_note) d += '<div class="small dim">' + esc(c.ranking_note) + "</div>";
+        } else {
+          d += '<span class="badge b-red">No keeper chosen</span>';
+        }
+        if (c.duration_status) d += '<div class="small">Durations: ' + esc(c.duration_status) + (c.duration_note ? " — " + esc(c.duration_note) : "") + "</div>";
+        if (c.reason) d += '<div class="small">' + esc(c.reason) + "</div>";
+        (c.alternates||[]).forEach(a => {
+          d += '<div class="small" style="margin-top:4px">Alternate: <span class="mono dim">' + esc(linkRelSrc(a.source)) + "</span>" +
+            (a.same_physical ? ' <span class="badge b-dim">same physical file</span>' : "") +
+            '<div class="dim">' + esc(a.reason) + "</div>" + attached(a.attached_files) + "</div>";
+        });
+        (c.ineligible||[]).forEach(x => {
+          d += '<div class="small" style="margin-top:4px">Ineligible: <span class="mono dim">' + esc(linkRelSrc(x.path)) + '</span><div class="dim">' + esc(x.reason) + "</div>" + attached(x.attached_files) + "</div>";
+        });
+        return '<tr><td class="mono">' + esc(linkRelTgt(c.target)) + "</td><td>" + d + "</td></tr>";
+      }).join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.target_conflicts||[]).length){
+    h += '<h3 style="margin:16px 0 6px;color:var(--red)">Target conflicts — occupied, never overwritten</h3><div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Blocked source(s)</th><th>What is there</th><th>Reason</th></tr></thead><tbody>' +
+      p.target_conflicts.map(c => '<tr style="background:#2a1518"><td class="mono">' + esc(linkRelTgt(c.target)) + '</td><td class="mono dim">' + (c.sources||[]).map(s => esc(linkRelSrc(s))).join("<br>") + attached(c.attached_files) + '</td><td class="small">' + esc(c.occupant) + '</td><td class="small">' + esc(c.reason) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.unlinkable||[]).length){
+    h += '<h3 style="margin:16px 0 6px">Unlinkable — a hardlink cannot be proven for these</h3><div style="overflow-x:auto"><table><thead><tr><th>Source</th><th>Would link to</th><th>Reason</th></tr></thead><tbody>' +
+      p.unlinkable.map(u => '<tr><td class="mono dim">' + esc(linkRelSrc(u.path)) + '</td><td class="mono dim">' + esc(u.target ? linkRelTgt(u.target) : "") + '</td><td class="small">' + esc(u.reason) + attached(u.attached_files) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.not_identified||[]).length){
+    h += '<h3 style="margin:16px 0 6px">Couldn\'t identify — no link is created</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+      p.not_identified.map(u => '<tr><td class="mono dim">' + esc(linkRelSrc(u.path)) + '</td><td class="small">' + esc(u.reason) + attached(u.attached_files) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.skipped||[]).length){
+    h += '<h3 style="margin:16px 0 6px">Skipped</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+      p.skipped.map(u => '<tr><td class="mono dim">' + esc(linkRelSrc(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  (p.warnings||[]).forEach(w => {
+    h += '<div class="small" style="color:var(--amber2);margin-top:14px;max-width:840px">⚠ ' + esc(w.message) + "</div>";
+  });
+  const n = (p.links_to_create||[]).length;
+  h += '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
+    '<button class="primary" id="btn-link-apply"' + (n ? "" : " disabled") + ">Build " + n + " links</button>" +
+    (linkManifestID ? '<button class="danger" id="btn-link-undo-last">Undo this link build</button>' : "") +
+    '<span class="small" id="link-apply-result">' + (resultHTML || "") + "</span></div>";
+  box.innerHTML = h;
+  const applyBtn = $("btn-link-apply");
+  if (applyBtn) applyBtn.addEventListener("click", applyLinkPlan);
+  const undoBtn = $("btn-link-undo-last");
+  if (undoBtn) undoBtn.addEventListener("click", () => undoLinkBuild(linkManifestID));
+}
+
+// applyLinkPlan executes the previewed link plan and renders
+// the report: created / already-linked / created-folders
+// counts, a partial notice, the manifest id, and every skipped
+// or failed item with its category and reason (collision
+// alternates are listed as not attempted).
+async function applyLinkPlan(){
+  if (!linkPlanData) return;
+  const btn = $("btn-link-apply");
+  if (btn){ btn.disabled = true; btn.textContent = "Building…"; }
+  try{
+    const res = await api.linkApply(linkPlanData.id);
+    if (res.manifest_id) linkManifestID = res.manifest_id;
+    const skipped = res.skipped || [], failed = res.failed || [];
+    let msg = '<span style="color:var(--green)">Created ' + res.created + " link(s) ✓</span>" +
+      (res.already_linked ? " · " + res.already_linked + " already linked" : "") +
+      (res.created_dirs ? " · " + res.created_dirs + " folder(s) created" : "") +
+      (res.manifest_id ? '<br><span class="dim">Undo record: ' + esc(res.manifest_id) + "</span>" : "");
+    if (res.partial) msg += '<br><span style="color:var(--amber2)">Partial build — some links were not created (below). Preview again to build what is still missing.</span>';
+    (res.warnings||[]).forEach(w => { msg += '<br><span style="color:var(--amber2)">⚠ ' + esc(w.message) + "</span>"; });
+    const rows = skipped.concat(failed);
+    if (rows.length){
+      msg += '<div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>Source</th><th>Target</th><th>Outcome</th><th>Reason</th></tr></thead><tbody>' +
+        rows.map(o => "<tr><td class='mono dim'>" + esc(linkRelSrc(o.source || "")) + "</td><td class='mono dim'>" + esc(o.target ? linkRelTgt(o.target) : "") + "</td><td>" +
+          (o.category === "collision" ? '<span class="badge b-dim">collision — not attempted</span>' : '<span class="badge b-amber">' + esc(o.category) + "</span>") +
+          "</td><td class='small'>" + esc(o.reason) + "</td></tr>").join("") +
+        "</tbody></table></div>";
+    }
+    renderLinkPlan(msg);
+    refreshLinkManifests();
+  }catch(e){
+    renderLinkPlan('<span style="color:var(--red)">' + esc(e.message) + "</span>");
+  }
+}
+
+// undoLinkBuild reverses one link build (from this session's
+// Apply or from the Past link builds list) after a confirm that
+// carries the mode's undo promise.
+async function undoLinkBuild(mid){
+  if (!mid) return;
+  if (!confirm("Undo this link build? Only links recorded by this build and still pointing to the recorded source file will be removed. Originals are not touched.")) return;
+  try{
+    const res = await api.linkUndo(mid);
+    let msg = '<span style="color:var(--green)">Removed ' + res.removed + " link(s) ✓</span>" +
+      (res.already_gone ? " · " + res.already_gone + " already gone" : "") +
+      (res.dirs_removed ? " · " + res.dirs_removed + " folder(s) removed" : "");
+    if ((res.skipped||[]).length)
+      msg += '<br><span style="color:var(--red)">Left in place: ' + res.skipped.map(x => esc(linkRelTgt(x.target || "")) + " — " + esc(x.reason)).join("<br>") + "</span>";
+    if ((res.dirs_left||[]).length)
+      msg += '<br><span class="dim">Folders left: ' + res.dirs_left.map(x => esc(x.target) + " — " + esc(x.reason)).join("<br>") + "</span>";
+    if (!res.undone) msg += '<br><span style="color:var(--amber2)">The build stays active — undo can be retried once the skipped targets are resolved.</span>';
+    if (mid === linkManifestID) linkManifestID = "";
+    if (linkPlanData) renderLinkPlan(msg);
+    else $("link-plan").innerHTML = '<p class="small">' + msg + "</p>";
+    refreshLinkManifests();
+  }catch(e){ alert(e.message); }
+}
+
+// refreshLinkManifests paints the Past link builds list.
+async function refreshLinkManifests(){
+  let data; try{ data = await api.linkManifests(); }catch(e){ return; }
+  const list = data.manifests || [];
+  $("link-manifests-empty").style.display = list.length ? "none" : "block";
+  $("link-manifests").innerHTML = list.length ?
+    "<table><thead><tr><th>Date (UTC)</th><th>Source folder</th><th>Target folder</th><th>Links</th><th>Status</th><th></th></tr></thead><tbody>" +
+    list.map(m => "<tr><td class='small'>" + esc((m.created_at||"").replace("T"," ").replace("Z","")) + "</td>" +
+      '<td class="mono dim">' + esc(m.source_root) + '</td><td class="mono dim">' + esc(m.target_root) + "</td><td>" + m.links + "</td>" +
+      "<td>" + (m.status === "undone" ? '<span class="badge b-dim">undone</span>' : (m.status === "partially undone" ? '<span class="badge b-amber">partially undone</span>' : '<span class="badge b-green">applied</span>')) + "</td>" +
+      "<td>" + (m.undone ? "" : '<button class="small danger link-undo" data-mid="' + esc(m.id) + '">Undo</button>') + "</td></tr>").join("") +
+    "</tbody></table>" : "";
+  document.querySelectorAll(".link-undo").forEach(b => b.addEventListener("click", () => undoLinkBuild(b.dataset.mid)));
 }
 
 /* ================= OpenSubtitles (v1.0.0, W4–W5) =================
@@ -2639,7 +2902,7 @@ function renderHistory(list){
 
 /* ================= Boot ================= */
 async function refreshAll(){
-  try{ await Promise.all([refreshLibrary(), refreshSubtitles(), refreshDuplicates(), refreshHealth(), refreshSettings(), refreshOrganizeManifests(), refreshReport(), refreshHistory()]); }
+  try{ await Promise.all([refreshLibrary(), refreshSubtitles(), refreshDuplicates(), refreshHealth(), refreshSettings(), refreshOrganizeManifests(), refreshLinkManifests(), refreshReport(), refreshHistory()]); }
   catch(e){ /* backend not up yet */ }
   refreshState();
 }

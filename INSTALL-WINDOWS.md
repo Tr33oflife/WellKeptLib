@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.0.0)
+# Install — Windows (WellKeptLib v1.1.0)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.0.0-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.1.0-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,30 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.1.0
+
+- **Build Jellyfin library (hardlinks)** — a second mode in
+  the Organize tab. Instead of moving files, it builds the
+  same Jellyfin layout under a separate target folder using
+  **hardlinks**: your originals are never modified, renamed,
+  or deleted, and the library costs no extra disk space (a
+  hardlink is another name for the same file). Source and
+  target must be on the same volume — the preview proves it
+  per file before anything is created and lists anything
+  unlinkable with the reason. When several copies want one
+  name, the preview shows which copy wins and why
+  (resolution → HDR → bitrate → size), lists the alternates,
+  and refuses to pick when the copies' durations say they
+  may be different cuts. Undo removes only the links the
+  build itself created and verified.
+- **Keep the target folder outside your scan roots** — if it
+  sits inside one, the preview warns you: a scan would list
+  the linked library alongside the originals.
+- Two honest caveats: editing a file through either name
+  edits the shared content (they are the same file), and
+  deleting the original does not free disk space while a
+  link to it remains.
 
 ## What's new in v1.0.0
 

@@ -3,3 +3,4 @@
 /plex-file-manager.exe
 *.log
 /data/
+/fixtures/library/
