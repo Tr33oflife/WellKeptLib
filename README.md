@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.1.0
+- **Version:** 1.1.1
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -145,7 +145,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.1.0-public.zip` from the
+Get `WellKeptLib-1.1.1-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -247,7 +247,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.1.0 binaries. One disclosed divergence, in a test file
+  1.1.1 binaries. One disclosed divergence, in a test file
   only: the fixture lookup helper additionally accepts this
   repository's fixtures layout, and the fixture generator
   script ships in `fixtures/` — no product code or test
@@ -301,26 +301,26 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.1.0)
+## Verification (what was actually checked for 1.1.1)
 
-- Go test suite: **246 top-level tests, all passing**,
-  counted as `--- PASS` lines from `go test -v ./...` on
-  this published tree (the development record counts 245 by
-  a slightly different method; the one-test difference is
-  counting, not content — zero failures either way);
+- Go test suite: **251 top-level tests, all passing**,
+  counted as `--- PASS` lines from `go test -v ./...` and
+  re-run on this published tree (251 PASS, 0 FAIL);
   `go vet` and `gofmt` clean; race detector clean over the
-  new link tests. 38 of the tests are new for the link mode,
-  and no pre-existing test expectation changed.
-- Page checks: every element id the page script looks up
-  resolves (156 looked up / 179 defined); a Node render
-  harness exercising the real page script passes **100/100**,
-  including all 33 link-mode checks.
-- Shipped-binary smoke: **41/41**, run on the base build and
-  re-run on the public package's extracted binary — including
-  the source-untouched proof: full source-tree snapshots
-  (path, hash, size, mtime, device, inode, link count) are
-  identical after a link build and after build + undo
-  (link counts go 1 → 2 → 1 over HTTP).
+  new lock tests. (Counting note: the true pre-existing base
+  is 246 — an earlier 245 figure in the 1.1.0 record was a
+  counting artifact of a concurrent run, since corrected in
+  the development record; the suite was green either way.)
+- Shipped-binary smoke: **48/48** on the base build,
+  including an **incident replay, 7/7**: a boot killed
+  without cleanup leaves its lock behind, and the next start
+  takes the data folder over automatically instead of
+  refusing — the exact failure 1.1.0 shipped on Windows,
+  replayed against the shared takeover logic on Linux. The
+  public package's extracted binary passes the same smoke.
+- Page checks and render harness are unchanged from 1.1.0
+  (156 looked up / 179 defined; **100/100**), as is the rest
+  of the product: no UI or behavior change beyond the fix.
 - Installer walk on this public package: **12/12**. Honest
   limit: installer walks run the real binaries and the real
   installer logic, but `systemctl` itself is shimmed — no
@@ -336,6 +336,15 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 ## Known limitations
 
 - No built-in authentication (see the security warning).
+- **The 1.1.1 Windows lock fix is not yet live-proven on
+  Windows.** The bug it fixes was confirmed live (a real
+  lockout, cleared by hand-deleting the lock file), and the
+  fix's takeover logic is proven by regression tests and an
+  incident replay on Linux, where the logic is shared — but
+  the Windows liveness check and console-close handler
+  themselves are compile-verified and logic-reviewed only;
+  they cannot execute in the build environment. The first
+  Windows start after an unclean close is the live proof.
 - **The hardlink library mode is not yet live-proven.**
   Real cross-device (EXDEV) failures and Windows hardlink
   execution are verified at an injected-function test seam
@@ -368,6 +377,24 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.1.1 (hotfix; supersedes 1.1.0)
+
+- **Windows startup lockout fixed.** In 1.0.0–1.1.0, the
+  single-instance lock in the data folder could never be
+  recognized as stale on Windows, and closing the app window
+  never released it — so after the first close, every later
+  start exited immediately claiming another copy was running.
+  1.1.1 checks process liveness for real, releases the lock
+  when the window closes, and treats a lock left by a dead
+  process as stale. **If 1.1.0 locked you out, just start
+  1.1.1** — it clears the dead lock itself; nothing needs
+  deleting by hand (deleting
+  `%LOCALAPPDATA%\PlexFileManager\app.lock` also works).
+- The 1.1.0 public release has been **withdrawn** — please
+  use this build instead. Nothing else changes: no new
+  features, no UI changes, no behavior changes beyond the
+  fix and the version number.
 
 ## Release notes — 1.1.0
 

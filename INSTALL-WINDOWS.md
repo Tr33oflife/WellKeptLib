@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.1.0)
+# Install — Windows (WellKeptLib v1.1.1)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.1.0-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.1.1-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,18 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.1.1
+
+- **Startup fix (Windows):** after closing the app window,
+  the app could refuse to start again, claiming another copy
+  was already running — even though nothing was running.
+  Fixed: a leftover lock file from a process that is no
+  longer running is now recognized and cleared automatically,
+  and the app also removes its lock itself when the window
+  closes. **If v1.1.0 left you locked out, just start
+  v1.1.1** — it will let you in; no file needs deleting by
+  hand.
 
 ## What's new in v1.1.0
 

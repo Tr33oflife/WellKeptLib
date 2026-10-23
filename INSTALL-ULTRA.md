@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.1.0)
+# Install — Ultra.cc (WellKeptLib v1.1.1)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,14 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.1.1:** a Windows-only startup fix — on Windows,
+after closing the app window, the app could refuse to start
+again, claiming another copy was running, even though
+nothing was running. A leftover lock file from a process
+that is no longer running is now recognized and cleared
+automatically. Nothing changes on Ultra/Linux beyond the
+version number.
 
 **New in v1.1.0:** the Organize tab gains a second mode —
 **Build Jellyfin library (hardlinks)**. Point it at a source

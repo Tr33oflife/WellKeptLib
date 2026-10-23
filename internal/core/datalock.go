@@ -12,13 +12,18 @@ package core
 // code 2, "a server is running against this data dir").
 //
 // Stale locks: the file carries a PID; when the PID is
-// verifiably NOT alive (checked where the platform allows —
-// lockpid_unix.go), the lock is treated as stale and taken
-// over, so a crashed process does not brick the data dir.
-// Where liveness cannot be verified (Windows), an existing
-// lock is always honored — the conservative direction: a
-// false refusal prints instructions, a false takeover could
-// corrupt two writers' stores.
+// verifiably NOT alive, the lock is treated as stale and
+// taken over, so a crashed process does not brick the data
+// dir. Liveness is probed per platform (lockpid_unix.go:
+// signal 0; lockpid_windows.go: OpenProcess +
+// GetExitCodeProcess). v1.0.0–v1.1.0's Windows probe was a
+// stub that always answered "alive", so no leftover lock
+// could ever be taken over there — fixed in v1.1.1. Where a
+// probe genuinely cannot decide (e.g. Windows access denied
+// against a protected process), it answers alive — the
+// conservative direction: a false refusal prints
+// instructions, a false takeover could corrupt two writers'
+// stores.
 
 import (
 	"fmt"
@@ -46,6 +51,17 @@ func (e *DataLockError) Error() string {
 	return fmt.Sprintf("data dir is locked by another WellKeptLib process (lock %s) — stop it first, or delete the lock file if that process is really gone", e.Path)
 }
 
+// processAliveFn is the injectable PID-liveness probe behind
+// stale-lock takeover, mirroring createHardlinkFn in
+// linkfile.go: the production value is the platform
+// processAlive (lockpid_unix.go / lockpid_windows.go); tests
+// replace it (saving and restoring the original, never in
+// parallel) to pin the takeover/refusal matrix on any
+// platform — including the dead-PID incident case, which the
+// real probe can otherwise only reproduce with a genuinely
+// dead PID (datalock_test.go).
+var processAliveFn = processAlive
+
 // AcquireDataLock takes the data dir's lock, taking over a
 // verifiably stale one.
 func AcquireDataLock(dataDir string) (*DataLock, error) {
@@ -68,7 +84,7 @@ func AcquireDataLock(dataDir string) (*DataLock, error) {
 				pid = n
 			}
 		}
-		if pid > 0 && pid != os.Getpid() && !processAlive(pid) {
+		if pid > 0 && pid != os.Getpid() && !processAliveFn(pid) {
 			_ = os.Remove(path)
 			continue // retry the exclusive create
 		}

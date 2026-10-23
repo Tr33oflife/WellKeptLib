@@ -193,6 +193,13 @@ func main() {
 		lock.Release()
 		os.Exit(code)
 	}
+	// v1.1.1: on Windows, closing the console window (how a
+	// double-clicked app is normally closed) terminates the
+	// process without running the deferred lock release above,
+	// leaving app.lock behind. Register a console control
+	// handler that releases the lock on window close / logoff
+	// / shutdown. No-op on other platforms.
+	installConsoleLockRelease(lock)
 	// The scheduler runs ONLY in server mode — a one-shot CLI
 	// run must never leave a ticker behind (and must never fire
 	// a second scan of its own).
