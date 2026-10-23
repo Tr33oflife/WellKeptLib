@@ -62,6 +62,14 @@ func defaultConfig() *Config {
 		SubtitleSampleSec:         defaultSubtitleSampleSec,
 		SubtitleExtractTimeoutSec: defaultSubtitleExtractTimeoutSec,
 		SubtitleMaxTracks:         defaultSubtitleMaxTracks,
+		// v0.8.0: the embedded-audit master switch defaults ON —
+		// that is the behavior every build before this one had.
+		EmbeddedAudit: true,
+		// v0.9.0: coverage wants English subtitles by default.
+		WantedLanguages: []string{"eng"},
+		// v1.0.0: webhook flavor defaults to the generic JSON
+		// payload; the schedule and the webhook both default OFF.
+		WebhookFlavor: "generic",
 	}
 	if p, err := exec.LookPath("ffprobe"); err == nil {
 		c.FFprobePath = p
@@ -126,8 +134,63 @@ func loadConfig(dataDir string) (*Config, string) {
 	if saved.SubtitleMaxTracks > 0 {
 		c.SubtitleMaxTracks = saved.SubtitleMaxTracks
 	}
+	// v0.8.0: EmbeddedAudit is a bool whose default is TRUE, so the
+	// numeric fields' "non-zero = present" merge above cannot
+	// express it: a config written before the field existed has no
+	// key at all (and must stay ON), while a deliberately saved
+	// OFF must be honored. Presence is therefore probed from the
+	// raw JSON: only an explicit "embedded_audit" key overrides
+	// the default.
+	var auditProbe struct {
+		EmbeddedAudit *bool `json:"embedded_audit"`
+	}
+	if err := json.Unmarshal(b, &auditProbe); err == nil && auditProbe.EmbeddedAudit != nil {
+		c.EmbeddedAudit = *auditProbe.EmbeddedAudit
+	}
+	// v1.0.0: the two automation switches get the same presence-
+	// aware treatment. Their default is FALSE, so the numeric
+	// rule would coincidentally work — but the presence probe
+	// keeps the semantics explicit (absent = default, present =
+	// honored) and immune to a future default flip.
+	var v100Probe struct {
+		ScheduleEnabled *bool `json:"schedule_enabled"`
+		WebhookEnabled  *bool `json:"webhook_enabled"`
+	}
+	if err := json.Unmarshal(b, &v100Probe); err == nil {
+		if v100Probe.ScheduleEnabled != nil {
+			c.ScheduleEnabled = *v100Probe.ScheduleEnabled
+		}
+		if v100Probe.WebhookEnabled != nil {
+			c.WebhookEnabled = *v100Probe.WebhookEnabled
+		}
+	}
+	if saved.ScheduleIntervalHours > 0 {
+		c.ScheduleIntervalHours = saved.ScheduleIntervalHours
+	}
+	if saved.ScheduleDailyTime != "" {
+		c.ScheduleDailyTime = saved.ScheduleDailyTime
+	}
+	if saved.WebhookURL != "" {
+		c.WebhookURL = saved.WebhookURL
+	}
+	if saved.WebhookFlavor != "" {
+		c.WebhookFlavor = saved.WebhookFlavor
+	}
+	if saved.ScheduleLastRunUnix > 0 {
+		c.ScheduleLastRunUnix = saved.ScheduleLastRunUnix
+	}
 	c.Roots = saved.Roots
 	c.Exclusions = saved.Exclusions
+	// v0.9.0: wanted languages are a slice, taken as saved (like
+	// Roots/Exclusions) and normalized; an older config without
+	// the key keeps the default, and a saved-but-empty list falls
+	// back to the default rather than wanting nothing.
+	if saved.WantedLanguages != nil {
+		c.WantedLanguages = normalizeWantedLanguages(saved.WantedLanguages)
+		if len(c.WantedLanguages) == 0 {
+			c.WantedLanguages = []string{"eng"}
+		}
+	}
 	if saved.FFprobePath != "" {
 		c.FFprobePath = saved.FFprobePath
 	}
@@ -165,6 +228,52 @@ func preserveCorruptConfig(dataDir string) string {
 	}
 	_ = os.Rename(src, filepath.Join(dataDir, name))
 	return name
+}
+
+// normalizeWantedLanguages cleans a wanted-languages list for
+// storage (v0.9.0): entries are trimmed and lowercased, empties
+// dropped, and duplicates removed BY LANGUAGE — "spa" and "es"
+// are the same want, so only the first spelling is kept. The
+// stored form is otherwise what the user typed ("eng" stays
+// "eng"); every comparison canonicalizes through
+// normalizeLangKey, so the spelling never changes meaning.
+func normalizeWantedLanguages(in []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, c := range in {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if c == "" {
+			continue
+		}
+		key := normalizeLangKey(c)
+		if key == "" {
+			key = c
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, c)
+	}
+	return out
+}
+
+// wantedLangKeys returns the canonical (ISO 639-1) key set of the
+// config's wanted languages — the set coverage derivation tests
+// subtitle languages against. An empty configured list (which the
+// load/save paths already prevent) still wants English rather
+// than nothing.
+func (c *Config) wantedLangKeys() map[string]bool {
+	out := map[string]bool{}
+	for _, code := range c.WantedLanguages {
+		if k := normalizeLangKey(code); k != "" {
+			out[k] = true
+		}
+	}
+	if len(out) == 0 {
+		out["en"] = true
+	}
+	return out
 }
 
 // saveConfig writes the config back to the data dir atomically enough

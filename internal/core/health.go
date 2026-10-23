@@ -9,6 +9,7 @@ package core
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -24,8 +25,10 @@ type subFileInfo struct {
 }
 
 // buildHealth assembles health findings from scanned items, subtitle
-// info, incomplete-download files, and empty folders.
-func buildHealth(items []*Item, subs []subFileInfo, incomplete []HealthFinding, emptyFolders []string, cfg *Config) []HealthFinding {
+// info, incomplete-download files, and empty folders. sidecars
+// (v0.9.0) are the walk's .nfo / image files, consumed by the
+// orphan-sidecar check below.
+func buildHealth(items []*Item, subs []subFileInfo, incomplete []HealthFinding, emptyFolders []string, sidecars []fileRef, cfg *Config) []HealthFinding {
 	out := []HealthFinding{}
 	seen := map[string]bool{}
 	add := func(f HealthFinding) {
@@ -84,12 +87,103 @@ func buildHealth(items []*Item, subs []subFileInfo, incomplete []HealthFinding, 
 	for _, d := range emptyFolders {
 		add(HealthFinding{Path: d, Type: "empty-folder", Evidence: "folder contains no files at all"})
 	}
+	// Orphan sidecars (v0.9.0, FEATURE-PLAN §5): a subtitle,
+	// .nfo, or artwork file whose name matches NO media file in
+	// the same folder (the Organize association rule — see
+	// sidecarMatchesStems) is what a deleted or renamed video
+	// leaves behind. Two guards keep the check honest:
+	//
+	//   - The folder must contain at least one media file. A
+	//     folder with no media at all (a subtitle-only folder, a
+	//     downloads staging area) makes no claim about pairings,
+	//     so nothing in it is an orphan.
+	//   - A subtitle file already flagged subtitle-empty or
+	//     subtitle-unparseable above is not reported twice: it
+	//     has a finding that describes its actual problem.
+	//
+	// Folder-level artwork (poster.jpg, folder.jpg, tvshow.nfo…)
+	// belongs to the folder, not to one video, and is never an
+	// orphan. Orphan findings are ordinary file findings: the
+	// guarded Delete applies (files only — folders, as ever,
+	// are reveal-only).
+	mediaStemsByDir := map[string]map[string]bool{}
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		dir := filepath.Dir(it.Path)
+		if mediaStemsByDir[dir] == nil {
+			mediaStemsByDir[dir] = map[string]bool{}
+		}
+		mediaStemsByDir[dir][strings.TrimSuffix(it.Name, filepath.Ext(it.Name))] = true
+	}
+	flaggedSub := map[string]bool{}
+	for _, sf := range subs {
+		if sf.ParseErr != "" || sf.Cues == 0 || sf.Lines == 0 {
+			flaggedSub[sf.Path] = true
+		}
+	}
+	for _, sf := range subs {
+		stems, hasMedia := mediaStemsByDir[filepath.Dir(sf.Path)]
+		if !hasMedia || flaggedSub[sf.Path] {
+			continue
+		}
+		if !sidecarMatchesStems(sf.Path, stems) {
+			add(HealthFinding{Path: sf.Path, Type: "orphan-sidecar", Size: sf.Size,
+				Evidence: "subtitle file with no matching video file in this folder — its video is gone or was renamed"})
+		}
+	}
+	for _, sc := range sidecars {
+		stems, hasMedia := mediaStemsByDir[filepath.Dir(sc.Path)]
+		if !hasMedia {
+			continue
+		}
+		stem := strings.ToLower(sidecarStemOf(sc.Path))
+		ext := strings.ToLower(filepath.Ext(sc.Path))
+		if artworkStems[stem] || (ext == ".nfo" && (stem == "tvshow" || stem == "movie")) {
+			continue // folder artwork belongs to the folder
+		}
+		if !sidecarMatchesStems(sc.Path, stems) {
+			add(HealthFinding{Path: sc.Path, Type: "orphan-sidecar", Size: sc.Size,
+				Evidence: "sidecar file with no matching video file in this folder — its video is gone or was renamed"})
+		}
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Type != out[j].Type {
 			return out[i].Type < out[j].Type
 		}
 		return out[i].Path < out[j].Path
 	})
+	return out
+}
+
+// topMostEmptyFolders reduces a list of recursively-empty
+// folders to the top-most folder of each empty chain (v0.9.0):
+// a folder is dropped when any ancestor of it is also in the
+// list — the ancestor's finding already says "this whole tree
+// is empty", and one finding per chain is the report. Input
+// order is preserved.
+func topMostEmptyFolders(empties []string) []string {
+	set := map[string]bool{}
+	for _, d := range empties {
+		set[filepath.Clean(d)] = true
+	}
+	out := make([]string, 0, len(empties))
+	for _, d := range empties {
+		nested := false
+		for p := filepath.Dir(filepath.Clean(d)); ; p = filepath.Dir(p) {
+			if set[p] {
+				nested = true
+				break
+			}
+			if filepath.Dir(p) == p {
+				break
+			}
+		}
+		if !nested {
+			out = append(out, d)
+		}
+	}
 	return out
 }
 

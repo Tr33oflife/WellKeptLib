@@ -236,6 +236,66 @@ func buildDuplicates(items []*Item, cfg *Config, exclusions []Exclusion) ([]DupG
 		}
 		sort.Slice(g.Copies, func(i, j int) bool { return g.Copies[i].Size > g.Copies[j].Size })
 		g.WastedBytes = total - keeper.Size
+		// v1.0.0 hardlink math: WastedBytes above is the APPARENT
+		// figure (every extra entry counted at full size).
+		// ReclaimableBytes is what deleting down to one physical
+		// copy would actually free: copies are grouped by storage
+		// identity (device+inode); each distinct physical file
+		// beyond the keeper's counts ONCE at its size, and entries
+		// sharing the keeper's identity count ZERO — deleting a
+		// hardlink of the keeper removes a name, not data. A copy
+		// whose identity is unknown is treated as its own physical
+		// file (the pre-v1.0.0 arithmetic — the honest fallback,
+		// labelled via HardlinkKnown=false).
+		physSize := map[string]int64{}
+		physKeyOf := make([]string, len(g.Copies))
+		keeperKey := ""
+		allKnown := true
+		for i := range g.Copies {
+			c := &g.Copies[i]
+			key := ""
+			if c.Dev != 0 && c.Ino != 0 {
+				c.IdentityKnown = true
+				key = fmt.Sprintf("%d:%d", c.Dev, c.Ino)
+			} else {
+				allKnown = false
+				key = "path:" + c.Path // unknown = its own physical file
+			}
+			physKeyOf[i] = key
+			if _, seen := physSize[key]; !seen {
+				physSize[key] = c.Size
+			}
+			if c.IsKeeper {
+				keeperKey = key
+			}
+		}
+		g.FileEntries = len(g.Copies)
+		g.PhysicalCopies = len(physSize)
+		g.HardlinkKnown = allKnown
+		hardlinksOfKeeper := 0
+		for i := range g.Copies {
+			if !g.Copies[i].IsKeeper && physKeyOf[i] == keeperKey {
+				g.Copies[i].HardlinkOfKeeper = true
+				hardlinksOfKeeper++
+			}
+			if physKeyOf[i] != keeperKey {
+				// Count each distinct physical file once: only the
+				// first entry carrying a key contributes its size.
+				first := true
+				for j := 0; j < i; j++ {
+					if physKeyOf[j] == physKeyOf[i] {
+						first = false
+						break
+					}
+				}
+				if first {
+					g.ReclaimableBytes += physSize[physKeyOf[i]]
+				}
+			}
+		}
+		if hardlinksOfKeeper > 0 {
+			g.KeeperWhy += fmt.Sprintf("; hardlinked to %d other %s — deleting those frees 0 B", hardlinksOfKeeper, pluralCopies(hardlinksOfKeeper))
+		}
 		// Exact duplicates: same size AND same sampled hash.
 		byHash := map[string][]int{}
 		for i := range g.Copies {
@@ -276,6 +336,14 @@ func buildDuplicates(items []*Item, cfg *Config, exclusions []Exclusion) ([]DupG
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].WastedBytes > out[j].WastedBytes })
 	return out, stats
+}
+
+// pluralCopies is the tiny plural helper for keeper notes.
+func pluralCopies(n int) string {
+	if n == 1 {
+		return "copy"
+	}
+	return "copies"
 }
 
 // classifyDurations implements the confirm / probable / demoted logic:

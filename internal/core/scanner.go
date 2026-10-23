@@ -60,6 +60,12 @@ type fileRef struct {
 	Root  string
 	Size  int64
 	Mtime int64 // unix nano
+	// Dev / Ino / Nlink (v1.0.0): the file's storage identity,
+	// captured from the walk's own os.FileInfo (see fileid_*.go).
+	// Zero Ino = unknown on this platform/filesystem.
+	Dev   uint64
+	Ino   uint64
+	Nlink uint64
 }
 
 // driveKeepAliveInterval is how often a running scan touches each
@@ -243,9 +249,9 @@ func (wp *walkProgress) warningFinding() *HealthFinding {
 
 // runScan is the scan goroutine body (started by StartScan).
 func (s *Service) runScan(ctx context.Context, roots []string) {
+	scanStart := time.Now()
 	finish := func(errMsg string) {
 		s.mu.Lock()
-		defer s.mu.Unlock()
 		// v0.3.1: persist the probe cache on EVERY exit path —
 		// completion, cancel, error. Before this, the store was
 		// only saved at the end of a completed scan, so cancelling
@@ -259,6 +265,21 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 			s.state.LastError = errMsg
 		}
 		s.cancel = nil
+		summary := s.currentSummaryLocked()
+		s.mu.Unlock()
+		// v1.0.0 webhook: fired AFTER the state is published and
+		// results are persisted, from this goroutine's tail — and
+		// the delivery itself is fire-and-forget (webhook.go), so
+		// a dead endpoint can never delay or fail this path. A
+		// completed scan announces scan_finished; an errored one
+		// scan_failed; a CANCELLED scan announces nothing
+		// (FEATURE-PLAN §6 default).
+		switch {
+		case errMsg == "":
+			s.fireWebhook("scan_finished", summary)
+		case errMsg != "scan cancelled":
+			s.fireWebhook("scan_failed", summary)
+		}
 	}
 	// Snapshot config for the scan duration.
 	s.mu.Lock()
@@ -275,6 +296,7 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 	// ---- Phase 1: walk ----
 	var media []fileRef
 	var subs []fileRef
+	var sidecars []fileRef
 	var incomplete []HealthFinding
 	var dirs []string
 	fileDirs := map[string]bool{} // dirs containing any file (directly or below)
@@ -325,6 +347,12 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 				return nil
 			}
 			ref := fileRef{Path: path, Root: absRoot, Size: info.Size(), Mtime: info.ModTime().UnixNano()}
+			// v1.0.0: capture the storage identity while the
+			// walk's stat is in hand (no extra IO on Linux; the
+			// Windows route opens a handle — see fileid_windows.go).
+			if dev, ino, nlink, ok := fileIdentityFor(info, path); ok {
+				ref.Dev, ref.Ino, ref.Nlink = dev, ino, nlink
+			}
 			for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
 				fileDirs[dir] = true
 				if dir == absRoot || filepath.Dir(dir) == dir {
@@ -339,6 +367,13 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 				wp.fileSeen()
 			case subtitleExts[ext]:
 				subs = append(subs, ref)
+				wp.fileSeen()
+			case ext == ".nfo" || organizeImageExts[ext]:
+				// v0.9.0: .nfo and image files are recorded ONLY
+				// so the health check can spot orphan sidecars —
+				// they are not media, not subtitles, and change
+				// no other count.
+				sidecars = append(sidecars, ref)
 				wp.fileSeen()
 			case isIncompleteName(name):
 				incomplete = append(incomplete, HealthFinding{
@@ -371,6 +406,11 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 		}
 	}
 	sort.Strings(emptyFolders)
+	// v0.9.0: a chain of nested empty folders (an empty Season
+	// folder inside an empty Series folder) is ONE dead tree, not
+	// a finding per level — keep only the top-most empty folder
+	// of each chain (FEATURE-PLAN §5's precise definition).
+	emptyFolders = topMostEmptyFolders(emptyFolders)
 
 	// ---- Phase 2: probe media (bounded workers, ffprobe only) ----
 	// v0.3.4: probing no longer extracts embedded subtitles (that
@@ -481,7 +521,7 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 		totalBytes += it.Size
 	}
 	sort.Slice(finalItems, func(i, j int) bool { return finalItems[i].Path < finalItems[j].Path })
-	health := buildHealth(finalItems, subInfos, incomplete, emptyFolders, &cfg)
+	health := buildHealth(finalItems, subInfos, incomplete, emptyFolders, sidecars, &cfg)
 
 	// ---- Phase 5 / Assembly A: publish results BEFORE the audit ----
 	// v0.3.4: the library, duplicates, health, and external-subtitle
@@ -489,7 +529,23 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 	// AuditPending set, instead of holding everything hostage to
 	// the embedded audit (the slowest phase). The user can browse
 	// real results while the audit streams in behind them.
-	s.assembleAndPersist(finalItems, health, externalFindings, len(subs), len(roots), totalBytes, &cfg, true)
+	//
+	// v0.8.0: with the embedded audit OFF in Settings
+	// (cfg.EmbeddedAudit false), assembly A is also the FINAL
+	// assembly: AuditPending stays false, AuditSkipped is set, and
+	// the scan ends here — phase 6 never runs, no audit jobs are
+	// created, ffmpeg extraction is never invoked, and cached
+	// audit findings are neither read nor republished (the read
+	// filter in filteredSubtitlesLocked backs this up for results
+	// an earlier audit-on scan left behind).
+	s.assembleAndPersist(finalItems, health, externalFindings, subs, len(roots), totalBytes, &cfg, cfg.EmbeddedAudit, !cfg.EmbeddedAudit)
+	if !cfg.EmbeddedAudit {
+		// v1.0.0: a completed scan leaves its history record
+		// (the audit-off path ends here, so it records here).
+		s.recordScanHistory(scanStart)
+		finish("")
+		return
+	}
 
 	// ---- Phase 6: embedded subtitle audit (bounded workers) ----
 	// Only files whose probe carries at least one subtitle stream
@@ -551,7 +607,11 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 	for _, fs := range embeddedByItem {
 		mergedFindings = append(mergedFindings, fs...)
 	}
-	s.assembleAndPersist(finalItems, health, mergedFindings, len(subs), len(roots), totalBytes, &cfg, false)
+	s.assembleAndPersist(finalItems, health, mergedFindings, subs, len(roots), totalBytes, &cfg, false, false)
+	// v1.0.0: history record for the completed scan (trigger,
+	// duration, summary, and the path snapshot deltas are
+	// computed from — history.go).
+	s.recordScanHistory(scanStart)
 	finish("")
 }
 
@@ -564,20 +624,33 @@ func (s *Service) runScan(ctx context.Context, roots []string) {
 // summary is derived by currentSummaryLocked from whatever
 // findings the snapshot carries, so assembly A's subtitle count
 // honestly reflects external-only until B lands.
-func (s *Service) assembleAndPersist(finalItems []*Item, health []HealthFinding, findings []SubtitleFinding, subtitleFileCount, rootCount int, totalBytes int64, cfg *Config, auditPending bool) {
+//
+// v0.8.0: when the embedded audit is off, runScan calls it ONCE
+// (assembly A) with auditPending=false and auditSkipped=true —
+// the same external-only snapshot, but flagged as the scan's
+// final state rather than an interim one.
+func (s *Service) assembleAndPersist(finalItems []*Item, health []HealthFinding, findings []SubtitleFinding, subFiles []fileRef, rootCount int, totalBytes int64, cfg *Config, auditPending, auditSkipped bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// v0.9.0: the external subtitle file paths ride the results
+	// so the coverage derivation can associate sidecars with
+	// items at read time (and after a restart).
+	subtitlePaths := make([]string, 0, len(subFiles))
+	for _, ref := range subFiles {
+		subtitlePaths = append(subtitlePaths, ref.Path)
+	}
 	s.results = &ScanResults{
-		Items:        finalItems,
-		Subtitles:    findings,
-		Health:       health,
-		ScannedAt:    time.Now().UTC().Format(time.RFC3339),
-		FFprobeFound: cfg.FFprobePath,
-		FFmpegFound:  cfg.FFmpegPath,
+		Items:             finalItems,
+		Subtitles:         findings,
+		Health:            health,
+		SubtitleFilePaths: subtitlePaths,
+		ScannedAt:         time.Now().UTC().Format(time.RFC3339),
+		FFprobeFound:      cfg.FFprobePath,
+		FFmpegFound:       cfg.FFmpegPath,
 	}
 	s.results.Summary = ScanSummary{
 		MediaCount:        len(finalItems),
-		SubtitleFileCount: subtitleFileCount,
+		SubtitleFileCount: len(subFiles),
 		TotalBytes:        totalBytes,
 		ScannedRootCount:  rootCount,
 	}
@@ -585,6 +658,7 @@ func (s *Service) assembleAndPersist(finalItems []*Item, health []HealthFinding,
 	s.state.Summary = s.results.Summary
 	s.state.ScannedAt = s.results.ScannedAt
 	s.state.AuditPending = auditPending
+	s.state.AuditSkipped = auditSkipped
 	s.saveResultsLocked()
 	s.saveStoreLocked()
 }
@@ -716,6 +790,11 @@ func (s *Service) probeOne(ctx context.Context, ref fileRef, cfg *Config) (*Item
 		Kind: pn.Kind, Title: pn.Title, NormTitle: pn.NormTitle, Year: pn.Year,
 		Season: pn.Season, Episodes: pn.Episodes, Edition: pn.Edition, ReleaseTags: pn.Tags,
 		Special: pn.Special, IsSample: samplePattern(ref.Path),
+		// v1.0.0: the walk's fresh identity is authoritative —
+		// the Item always carries THIS scan's stat, never a
+		// cached one (a replaced file under the same path gets
+		// its new inode on the scan that notices the change).
+		Dev: ref.Dev, Ino: ref.Ino, Nlink: ref.Nlink,
 	}
 	// Cache check: path + size + mtime must all match.
 	s.mu.Lock()
@@ -727,7 +806,7 @@ func (s *Service) probeOne(ctx context.Context, ref fileRef, cfg *Config) (*Item
 	} else {
 		pr = probeFile(ctx, cfg.FFprobePath, ref.Path, cfg.ProbeTimeoutSec)
 		s.mu.Lock()
-		s.store.Cache[ref.Path] = CacheEntry{Size: ref.Size, MtimeNano: ref.Mtime, Probe: pr}
+		s.store.Cache[ref.Path] = CacheEntry{Size: ref.Size, MtimeNano: ref.Mtime, Probe: pr, Dev: ref.Dev, Ino: ref.Ino, Nlink: ref.Nlink}
 		s.mu.Unlock()
 	}
 	it.ProbeOK = pr.OK

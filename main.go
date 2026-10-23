@@ -9,6 +9,7 @@ package main
 
 import (
 	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -61,22 +62,141 @@ func openBrowser(url string) {
 	_ = cmd.Start()
 }
 
-// main parses flags, builds the core service, and serves HTTP.
+// exitCodeForScan maps a finished one-shot scan to the CLI
+// exit code (FEATURE-PLAN §7 — the table is the contract):
+//
+//	0  the scan completed
+//	1  the scan itself failed
+//	2  configuration error — no roots configured, or the data
+//	   dir is locked by a running instance
+//	3  only with -fail-on-findings: the scan completed AND
+//	   findings the user asked to gate on are present
+//	   (duplicate reclaimable bytes > 0 or health findings > 0)
+func exitCodeForScan(scanErr string, sum core.ScanSummary, failOnFindings bool) int {
+	if scanErr != "" {
+		return 1
+	}
+	if failOnFindings && (sum.DuplicateReclaimable > 0 || sum.HealthFindings > 0) {
+		return 3
+	}
+	return 0
+}
+
+// runScanOnce is the -scan-once mode: one headless scan through
+// the shared StartScan path, progress lines as it runs, an
+// optional report file, and the exit-code table above. No
+// server, no browser, nothing left running.
+func runScanOnce(svc *core.Service, reportPath string, failOnFindings bool) int {
+	// Machine-clean stdout rule: when the report goes to stdout
+	// ("-report -"), progress lines move to stderr so stdout is
+	// pure report.
+	progress := os.Stdout
+	if reportPath == "-" {
+		progress = os.Stderr
+	}
+	cfg := svc.GetConfig()
+	if len(cfg.Roots) == 0 {
+		fmt.Fprintln(os.Stderr, "no scan roots configured — add roots in the web UI or config.json first")
+		return 2
+	}
+	if _, err := svc.StartScanTriggered(nil, "cli"); err != nil {
+		fmt.Fprintf(os.Stderr, "scan did not start: %v\n", err)
+		return 2
+	}
+	lastPhase, lastDone := "", -1
+	var finalState core.StateInfo
+	for {
+		st := svc.State()
+		finalState = st
+		if st.Scan.Phase != lastPhase || st.Scan.Done != lastDone {
+			lastPhase, lastDone = st.Scan.Phase, st.Scan.Done
+			if st.Scan.Total > 0 {
+				fmt.Fprintf(progress, "%s: %d/%d\n", st.Scan.Phase, st.Scan.Done, st.Scan.Total)
+			} else if st.Scan.Phase != "" {
+				fmt.Fprintf(progress, "%s\n", st.Scan.Phase)
+			}
+		}
+		if !st.Scan.Running {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	sum := finalState.Scan.Summary
+	fmt.Fprintf(progress, "scan complete: %d media · %d duplicate groups · %d subtitle findings · %d health findings\n",
+		sum.MediaCount, sum.DuplicateGroups, sum.SubtitleFindings, sum.HealthFindings)
+	if reportPath != "" {
+		var data []byte
+		var rerr error
+		if strings.HasSuffix(strings.ToLower(reportPath), ".html") {
+			data, rerr = svc.ReportHTML()
+		} else {
+			rc := svc.Report()
+			data, rerr = json.MarshalIndent(rc, "", "  ")
+		}
+		if rerr != nil {
+			fmt.Fprintf(os.Stderr, "report: %v\n", rerr)
+			return 1
+		}
+		if reportPath == "-" {
+			os.Stdout.Write(data)
+			fmt.Println()
+		} else if err := os.WriteFile(reportPath, data, 0o644); err != nil {
+			fmt.Fprintf(os.Stderr, "report: %v\n", err)
+			return 1
+		} else {
+			fmt.Fprintf(progress, "report written to %s\n", reportPath)
+		}
+	}
+	return exitCodeForScan(finalState.Scan.LastError, sum, failOnFindings)
+}
+
+// main parses flags, builds the core service, and serves HTTP —
+// or, with -scan-once, runs one headless scan and exits.
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8787", "listen address (host:port)")
 	dataDir := flag.String("data", "", "data directory (default: OS per-user location)")
 	baseURL := flag.String("baseurl", "", "path prefix when behind a reverse proxy, e.g. /plex-file-manager")
 	noBrowser := flag.Bool("no-browser", false, "do not try to open a browser on start")
+	scanOnce := flag.Bool("scan-once", false, "run one scan headless and exit (see the exit-code table in the docs)")
+	reportPath := flag.String("report", "", "with -scan-once: write the report card to this path (.html for HTML, otherwise JSON; \"-\" for stdout)")
+	failOnFindings := flag.Bool("fail-on-findings", false, "with -scan-once: exit 3 when the scan completes with gated findings present")
 	flag.Parse()
 
 	dd := *dataDir
 	if dd == "" {
 		dd = defaultDataDir()
 	}
+	// v1.0.0 single-instance lock: exactly one process owns a
+	// data dir (its stores are single-writer). A locked dir is a
+	// configuration error (exit 2) for both the server and the
+	// CLI — the refusal message names the lock and the way out.
+	if err := os.MkdirAll(dd, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "data dir: %v\n", err)
+		os.Exit(2)
+	}
+	lock, err := core.AcquireDataLock(dd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "WellKeptLib: %v\n", err)
+		os.Exit(2)
+	}
+	defer lock.Release()
 	svc, err := core.NewService(dd)
 	if err != nil {
-		log.Fatalf("data dir: %v", err)
+		fmt.Fprintf(os.Stderr, "data dir: %v\n", err)
+		os.Exit(2)
 	}
+	if *scanOnce {
+		// os.Exit skips deferred calls — release the lock
+		// explicitly so a completed one-shot never leaves a
+		// stale app.lock behind for the next run to trip over.
+		code := runScanOnce(svc, *reportPath, *failOnFindings)
+		lock.Release()
+		os.Exit(code)
+	}
+	// The scheduler runs ONLY in server mode — a one-shot CLI
+	// run must never leave a ticker behind (and must never fire
+	// a second scan of its own).
+	svc.StartScheduler()
 	base := strings.TrimSuffix(*baseURL, "/")
 	if base != "" && !strings.HasPrefix(base, "/") {
 		base = "/" + base

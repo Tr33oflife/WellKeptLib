@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v0.7.0)
+# Install — Windows (WellKeptLib v1.0.0)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-0.7.0-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.0.0-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -202,6 +202,36 @@ the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
 
+## What's new in v1.0.0
+
+- **Duplicates are hardlink-aware.** Groups now show *file
+  entries vs physical copies*; copies that are hardlinks of the
+  keeper are marked (deleting one frees 0 bytes), and the
+  **Reclaimable** figure counts only what deleting down to one
+  physical copy would actually free. The old figure remains as
+  *Apparent*.
+- **Report tab** — the whole library on one page, computed
+  from the same numbers the tabs show, with **CSV** and
+  **standalone HTML** downloads.
+- **History tab** — the last 50 scans with what changed since
+  the previous one. A drive that wasn't scanned this time never
+  counts its files as removed.
+- **Settings → Automation** — **scheduled scans** (every N
+  hours, or daily at a set time; the app must be running; a
+  busy app skips and records the slot, never queues it) and a
+  **scan-finished webhook** (generic JSON / Discord / ntfy,
+  counts only, fire-and-forget).
+- **OpenSubtitles downloads** — the subtitle wizard's Step F
+  can fetch missing subtitles with **your own** OpenSubtitles
+  API key (Settings → OpenSubtitles; downloads also need your
+  account login and count against your quota — the wizard
+  shows the API's own remaining count). Picks are always
+  explicit, files are verified with the built-in language
+  detector, and nothing is ever overwritten.
+- **One instance per data folder.** Starting the app twice
+  against the same data folder now refuses cleanly instead of
+  interleaving writes.
+
 ## Optional: command-line flags
 
 From a terminal in the extracted folder:
@@ -216,3 +246,13 @@ plex-file-manager.exe -addr 127.0.0.1:8788 -no-browser
   (default `%LOCALAPPDATA%\PlexFileManager`).
 - `-baseurl /path` — only needed behind a reverse proxy (Ultra).
 - `-no-browser` — don't auto-open the browser.
+- `-scan-once` — run ONE scan headless (using the roots saved
+  in Settings) and exit. No window, no server left running.
+  Exit codes: **0** scan completed · **1** the scan failed ·
+  **2** configuration error (no roots saved, or the data
+  folder is locked by a running instance) · **3** only with
+  `-fail-on-findings`: the scan completed and reclaimable
+  duplicates or health findings are present.
+- `-report <path>` — with `-scan-once`, also write the report
+  card (JSON, or HTML when the path ends in `.html`; `-` writes
+  it to the console).

@@ -80,6 +80,34 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	mux.HandleFunc("POST /api/organize/apply", s.handleOrganizeApply)
 	mux.HandleFunc("POST /api/organize/undo", s.handleOrganizeUndo)
 	mux.HandleFunc("GET /api/organize/manifests", s.handleOrganizeManifests)
+	// v0.9.0 — gaps, coverage, and the subtitle wizard (W1–W3):
+	// the Step 0 overview, the dismissal store, and the external
+	// fixes (relabel via manifest + guarded delete). No
+	// OpenSubtitles endpoints exist in this release.
+	mux.HandleFunc("GET /api/gaps", s.handleGaps)
+	mux.HandleFunc("GET /api/coverage", s.handleCoverage)
+	mux.HandleFunc("GET /api/subtitles/overview", s.handleSubtitlesOverview)
+	mux.HandleFunc("GET /api/subtitles/dismissals", s.handleSubtitlesDismissals)
+	mux.HandleFunc("POST /api/subtitles/dismiss", s.handleSubtitlesDismiss)
+	mux.HandleFunc("POST /api/subtitles/undismiss", s.handleSubtitlesUndismiss)
+	mux.HandleFunc("POST /api/subtitles/delete", s.handleSubtitlesDelete)
+	mux.HandleFunc("POST /api/subtitles/relabel/preview", s.handleRelabelPreview)
+	mux.HandleFunc("POST /api/subtitles/relabel/apply", s.handleRelabelApply)
+	mux.HandleFunc("POST /api/subtitles/relabel/undo", s.handleRelabelUndo)
+	mux.HandleFunc("GET /api/subtitles/manifests", s.handleRelabelManifests)
+	// v1.0.0 — report card + exports, scan history, and the
+	// OpenSubtitles wizard slices (W4 search / W5 download).
+	// Automation settings (schedule, webhook) ride the existing
+	// GET/POST /api/config channel with the Config fields.
+	mux.HandleFunc("GET /api/report", s.handleReport)
+	mux.HandleFunc("GET /api/report.csv", s.handleReportCSV)
+	mux.HandleFunc("GET /api/report.html", s.handleReportHTML)
+	mux.HandleFunc("GET /api/history", s.handleHistory)
+	mux.HandleFunc("GET /api/opensubtitles/settings", s.handleOSSettingsGet)
+	mux.HandleFunc("POST /api/opensubtitles/settings", s.handleOSSettingsSave)
+	mux.HandleFunc("POST /api/opensubtitles/search", s.handleOSSearch)
+	mux.HandleFunc("POST /api/opensubtitles/download", s.handleOSDownload)
+	mux.HandleFunc("GET /api/opensubtitles/actions", s.handleOSActions)
 	s.mux = mux
 	return s
 }
@@ -533,6 +561,165 @@ func (s *server) handleOrganizeManifests(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"manifests": list})
 }
 
+// handleGaps -> Service.EpisodeGaps (v0.9.0): missing-episode
+// rows derived from the current results. Read-only.
+func (s *server) handleGaps(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"gaps": s.svc.EpisodeGaps()})
+}
+
+// handleCoverage -> Service.Coverage (v0.9.0): wanted-language
+// coverage counts + the not-covered attention list.
+func (s *server) handleCoverage(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.Coverage())
+}
+
+// handleSubtitlesOverview -> Service.SubtitleOverview (v0.9.0):
+// the wizard's Step 0 counts — per problem class over the
+// current findings, plus coverage/gap counts and audit state.
+func (s *server) handleSubtitlesOverview(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.SubtitleOverview())
+}
+
+// handleSubtitlesDismissals -> Service.Dismissals (v0.9.0): the
+// verified/intentional marks, for the Settings manager.
+func (s *server) handleSubtitlesDismissals(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"dismissals": s.svc.Dismissals()})
+}
+
+// handleSubtitlesDismiss -> Service.DismissFinding /
+// DismissCoverage (v0.9.0). Body: {path, source, stream_index,
+// note}. source "coverage" marks a coverage item "not wanted";
+// anything else must name a current subtitle finding exactly.
+func (s *server) handleSubtitlesDismiss(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Path      string `json:"path"`
+		Source    string `json:"source"`
+		StreamIdx int    `json:"stream_index"`
+		Note      string `json:"note"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	var d core.SubtitleDismissal
+	var err error
+	if body.Source == "coverage" {
+		d, err = s.svc.DismissCoverage(body.Path, body.Note)
+	} else {
+		d, err = s.svc.DismissFinding(body.Path, body.Source, body.StreamIdx, body.Note)
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"dismissal": d})
+}
+
+// handleSubtitlesUndismiss -> Service.Undismiss (v0.9.0).
+// Body: {path, source, stream_index, class} — the full mark key,
+// exactly as the dismissals list reports it.
+func (s *server) handleSubtitlesUndismiss(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Path      string `json:"path"`
+		Source    string `json:"source"`
+		StreamIdx int    `json:"stream_index"`
+		Class     string `json:"class"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.svc.Undismiss(body.Path, body.Source, body.StreamIdx, body.Class); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleSubtitlesDelete -> Service.DeleteSubtitleFinding
+// (v0.9.0). Body: {path}. Guard failures (not a current external
+// finding, embedded path, outside the scan roots, a scan
+// running) are a 400 and nothing is deleted.
+func (s *server) handleSubtitlesDelete(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	res, err := s.svc.DeleteSubtitleFinding(body.Path)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleRelabelPreview -> Service.RelabelPreview (v0.9.0).
+// Body: {paths}. Plans only — nothing moves.
+func (s *server) handleRelabelPreview(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entries": s.svc.RelabelPreview(body.Paths)})
+}
+
+// handleRelabelApply -> Service.RelabelApply (v0.9.0).
+// Body: {paths}. Plans are recomputed server-side; per-file
+// skips come back in-band (applied + failed); only guard errors
+// (scan running, another file operation, manifest unwritable)
+// are HTTP errors — 409, like Organize apply.
+func (s *server) handleRelabelApply(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	res, err := s.svc.RelabelApply(body.Paths)
+	if err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleRelabelUndo -> Service.RelabelUndo (v0.9.0).
+// Body: {manifest_id}. Per-file restore failures come back
+// in-band; hard errors (unknown manifest, already undone,
+// guards) are 400, like Organize undo.
+func (s *server) handleRelabelUndo(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ManifestID string `json:"manifest_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	res, err := s.svc.RelabelUndo(body.ManifestID)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleRelabelManifests -> Service.SubtitleManifests (v0.9.0)
+func (s *server) handleRelabelManifests(w http.ResponseWriter, r *http.Request) {
+	list, err := s.svc.SubtitleManifests()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"manifests": list})
+}
+
 // handleExportJSON -> Service.ExportInventory
 func (s *server) handleExportJSON(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.svc.ExportInventory())
@@ -548,4 +735,101 @@ func (s *server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=library.csv")
 	_, _ = w.Write(b)
+}
+
+// --- v1.0.0 handlers: report, history, OpenSubtitles. Thin by
+// the standing rule: exactly one Service call each. ---
+
+// handleReport -> Service.Report: the report card JSON.
+func (s *server) handleReport(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.Report())
+}
+
+// handleReportCSV -> Service.ReportCSV: the sectioned CSV
+// export as a download.
+func (s *server) handleReportCSV(w http.ResponseWriter, r *http.Request) {
+	b, err := s.svc.ReportCSV()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=wellkeptlib-report.csv")
+	_, _ = w.Write(b)
+}
+
+// handleReportHTML -> Service.ReportHTML: the standalone,
+// self-contained HTML report as a download.
+func (s *server) handleReportHTML(w http.ResponseWriter, r *http.Request) {
+	b, err := s.svc.ReportHTML()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=wellkeptlib-report.html")
+	_, _ = w.Write(b)
+}
+
+// handleHistory -> Service.History: scan records newest-first,
+// each with its delta against the previous record.
+func (s *server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"history": s.svc.History()})
+}
+
+// handleOSSettingsGet -> Service.OSSecretsState: presence only
+// (enabled / configured / has_login) — never the values.
+func (s *server) handleOSSettingsGet(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.OSSecretsState())
+}
+
+// handleOSSettingsSave -> Service.SaveOSSecrets.
+func (s *server) handleOSSettingsSave(w http.ResponseWriter, r *http.Request) {
+	var in core.OSSecretsInput
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	view, err := s.svc.SaveOSSecrets(in)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+// handleOSSearch -> Service.SearchSubtitles (wizard W4).
+func (s *server) handleOSSearch(w http.ResponseWriter, r *http.Request) {
+	var in core.OSSearchRequest
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	resp, err := s.svc.SearchSubtitles(in)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleOSDownload -> Service.DownloadSubtitle (wizard W5).
+func (s *server) handleOSDownload(w http.ResponseWriter, r *http.Request) {
+	var in core.OSDownloadRequest
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	res, err := s.svc.DownloadSubtitle(in)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handleOSActions -> Service.SubtitleActions: what the wizard
+// itself downloaded, for the picker's history strip.
+func (s *server) handleOSActions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"actions": s.svc.SubtitleActions()})
 }

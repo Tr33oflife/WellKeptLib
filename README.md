@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 0.7.0
+- **Version:** 1.0.0
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -26,13 +26,26 @@ double-click `.exe` on Windows.
   Director's Cut, …) are kept separate. Groups show total wasted
   space, per-copy resolution / codec / bitrate / HDR / duration,
   a suggested keeper — and guarded per-copy delete (never a
-  group's last copy, always logged).
+  group's last copy, always logged). **Hardlink-aware:**
+  copies that are hardlinks to the same physical file are
+  identified as such (device/inode captured during the scan),
+  and the group shows *reclaimable* space — what deleting
+  copies would actually free — next to the apparent figure;
+  when a file's identity can't be determined, the figure is
+  honestly labeled an estimate.
 - **Subtitle truth-checking.** Subtitle files and embedded
   tracks are checked against their *text*, not their labels: a
   track tagged English whose cues are actually Spanish is
   flagged, with the detected language, a confidence value, and
   sample lines as evidence. Image-based tracks (PGS/VobSub)
-  are reported as "cannot verify", never guessed.
+  are reported as "cannot verify", never guessed. The
+  embedded-track audit can be switched off in Settings.
+  A guided **subtitle wizard** works through the findings:
+  dismiss ones you've reviewed (dismissals are bound to the
+  file's fingerprint, so a changed file resurfaces), relabel
+  a mislabeled sidecar (with undo), delete a bad sidecar
+  (guarded), and fill gaps by downloading from OpenSubtitles
+  (see below).
 - **Library health.** Empty and truncated files, unparseable
   containers, missing video streams, broken subtitles, and
   leftover download artefacts (`.part`, `.crdownload`, …) —
@@ -41,6 +54,48 @@ double-click `.exe` on Windows.
   delete) with an audit log.
 - **Inventory by size.** Movies, series, and seasons sorted
   by size, per-root totals, biggest files overall.
+- **Missing episodes.** A gaps view lists episodes that are
+  absent between the ones you have, per series and season.
+- **Subtitle coverage.** Per-show / per-library coverage for
+  the languages you want (a persisted wanted-languages list):
+  which episodes have which languages, and which are missing.
+- **Folder hygiene.** Orphan sidecar files (subtitles, .nfo,
+  artwork with no video beside them) and empty folders,
+  listed for review.
+- **Report card + export.** A Report tab aggregates the whole
+  library (summary, duplicates, findings, coverage, gaps),
+  downloadable as a sectioned CSV or a self-contained HTML
+  page (no scripts, no external references).
+- **Scan history.** Every completed scan is recorded (up to
+  50) with a delta against the previous one — added, removed,
+  and changed files — with missing roots handled honestly
+  (a root that wasn't scanned is never reported as mass
+  deletions).
+- **Scheduled scans + webhook.** Optional in-process
+  scheduled rescans (every N hours, or daily at a set time;
+  the app must be running) and an optional scan-finished
+  webhook (generic JSON, Discord, or ntfy flavor) whose
+  payload carries counts only — never paths or credentials.
+  Delivery is fire-and-forget: a dead webhook can never fail
+  or delay a scan.
+- **One-shot CLI mode.** `-scan-once` runs a scan from the
+  command line (optionally writing a report file), with
+  script-friendly exit codes: 0 = completed, 1 = scan failed,
+  2 = configuration error (including "another instance is
+  using this data folder"), 3 = only with `-fail-on-findings`,
+  when a completed scan found reclaimable duplicates or
+  health problems.
+- **OpenSubtitles downloads (optional, your own key).** The
+  wizard can search OpenSubtitles and download a missing
+  subtitle beside the media file (never overwriting; the
+  downloaded file is language-checked by the app's own
+  detector before placement and the verdict is shown).
+  Bring your own free OpenSubtitles API key, stored locally
+  (see Transparency). Downloads use your own account login
+  and the quota the API itself reports — nothing is
+  hardcoded. **Honest status: this client is verified
+  against a mock of the documented API shapes, not yet
+  against the live API** — see Known limitations.
 - **Organize into Jellyfin folders.** Pick a messy folder and
   preview a full Jellyfin-layout plan (`Title (Year)/…`,
   `Series/Season 01/Series - S01E01 - Title.ext`) before
@@ -51,14 +106,18 @@ double-click `.exe` on Windows.
   are flagged, never overwritten.
 
 Scanning is always read-only. The only features that touch
-files are Organize (preview → apply → undo) and the guarded
-per-file deletes on the Health and Duplicates tabs, each of
-which validates against the current findings and writes an
-audit log (`deleted-actions.json` in the data folder).
+files are Organize (preview → apply → undo), the guarded
+per-file deletes on the Health and Duplicates tabs, and the
+subtitle wizard's guarded actions (relabel with undo, delete,
+and placing a downloaded subtitle beside its media file —
+never overwriting). File-changing actions validate against
+the current findings and write audit logs in the data folder
+(`deleted-actions.json`, `subtitle-actions.json`,
+`subtitle-manifests/`).
 
 ## Install
 
-Get `WellKeptLib-0.7.0-public.zip` from the
+Get `WellKeptLib-1.0.0-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -135,9 +194,11 @@ to the internet.
   phones home. All scanning and analysis happens locally.
 - **Network calls happen only when you ask for them:**
   contacting plex.tv during the optional Plex sign-in, talking
-  to your own Plex server after you connect it, and — if you
-  accept the installer's offer — downloading a static ffmpeg
-  build.
+  to your own Plex server after you connect it, calling the
+  OpenSubtitles API when you've configured it and use the
+  wizard's search/download, posting to the webhook URL *you*
+  configured when a scan finishes, and — if you accept the
+  installer's offer — downloading a static ffmpeg build.
 - **Your data stays in one folder** (`~/.local/share/plex-file-manager`
   on Linux, `%LOCALAPPDATA%\PlexFileManager` on Windows):
   settings, scan cache, exclusions, organize undo manifests,
@@ -150,8 +211,15 @@ to the internet.
   kept in memory only, unless you explicitly tick "Remember my
   sign-in", in which case it is stored in that same file. No
   token is ever returned by any API response.
+- **OpenSubtitles credentials:** if you configure them, your
+  API key and account login live in `opensubtitles.json` in
+  the data folder (permissions 0600), on the same pattern.
+  Every API surface returns *presence only* (configured /
+  logged-in) — never the key, password, or session token; a
+  dedicated test plants secrets and sweeps the settings,
+  diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  0.7.0 binaries. The public edition was produced from a
+  1.0.0 binaries. The public edition was produced from a
   private codebase by a scripted scrub gate: a denylist
   (personal names, usernames, hostnames, domains, private
   connection details) is grepped over the whole tree *and* the
@@ -199,24 +267,32 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 0.7.0)
+## Verification (what was actually checked for 1.0.0)
 
-- Go test suite: **165 tests, all passing**; `go vet` and
-  `gofmt` clean.
-- Installer: scripted end-to-end walks of fresh installs
-  (proxy and LAN modes), an update from the previous version,
-  a deliberately broken update (automatic rollback), and an
-  uninstall — **36/36 checks** on the base build, plus a
-  fresh-install walk of this public package (**12/12**).
+- Go test suite: **207 tests, all passing** (re-run on this
+  published tree); `go vet` and `gofmt` clean; race detector
+  clean over the new concurrency surface (scheduler, webhook,
+  history, data-dir lock, OpenSubtitles).
+- Page checks: every element id the page script looks up
+  resolves (144 looked up / 166 defined); a Node render
+  harness exercising the real page script passes **67/67**.
+- Shipped-binary smoke: **29/29** on the base build (boot,
+  automation settings, fixture baseline, a real hardlink
+  added to the fixture library and measured, webhook delivery
+  received counts-only, report numbers equal to the API over
+  HTTP, CSV + HTML exports, scan-history records and deltas,
+  CLI exit codes 0, 3, and both lock-refusal cases). The
+  public package's binary is re-smoked after the scrub
+  rebuild, and the public installer walk passes **12/12**.
+- Installer walks on the base build (fresh proxy + LAN,
+  update, broken-update rollback, uninstall): **36/36**.
   Honest limit: those walks run the real binaries and the
   real installer logic, but `systemctl` itself is shimmed —
   no real systemd ran in the sandbox.
-- Shipped-binary smoke on a fixture library: version 0.7.0,
-  scan baseline 11 media / 2 duplicate groups / 2 subtitle
-  findings / 6 health findings, correct branding in the served
-  page.
 - Scrub gate over the extracted release ZIP (tree + binary
-  strings): **zero hits** on the full denylist.
+  strings): **zero hits** on the full denylist (personal
+  names, usernames, hostnames, domains, private connection
+  details, and cross-references to other private projects).
 - ARM64: the binary is built and file-type verified, but it
   has **not** been run on real ARM hardware by us — reports
   welcome.
@@ -224,6 +300,19 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 ## Known limitations
 
 - No built-in authentication (see the security warning).
+- **OpenSubtitles is not yet live-verified.** No real API key
+  was available in the build environment, so the client is
+  verified against a mock implementing the documented
+  request/response shapes. A few live response shapes aren't
+  pinned byte-for-byte (the search list key, exact quota field
+  names, download-link header expectations); the parser is
+  deliberately tolerant, and quota figures are read from the
+  API's own responses, never hardcoded. If you try it with a
+  real key, issue reports are very welcome.
+- Scheduled scans run inside the app process — the app must
+  be running for a schedule to fire. Missed slots are not
+  queued; the next slot is consumed once when the app next
+  runs.
 - Image-based subtitle tracks (PGS/VobSub) can't be
   language-verified.
 - Subtitle language detection is heuristic: short files and
@@ -233,19 +322,33 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
 
-## Release notes — 0.7.0
+## Release notes — 1.0.0 (changes since 0.7.0)
 
-- New `install.sh`: one script installs, updates (with
-  automatic rollback), and uninstalls on any Linux server;
-  ARM64 build added.
-- First release under the WellKeptLib name (display surfaces
-  only; plumbing names unchanged, existing installs update in
-  place).
-- Carries forward: the Duplicates interface overhaul,
-  per-file guarded actions on Health and Duplicates, Plex
-  sign-in with server switching, Organize with preview /
-  apply / undo, and the Android back-button fix (Back steps
-  through tabs; double-back at the first tab is the only exit).
+- **Hardlink truth in Duplicates:** reclaimable vs apparent
+  space, hardlink copies flagged, estimates labeled.
+- **Report tab** with sectioned CSV and self-contained HTML
+  export, numbers guaranteed equal to the app's own API.
+- **Scan history** (last 50) with per-scan deltas and
+  missing-root-safe comparisons.
+- **Scheduled scans** (interval or daily, in-process) and a
+  **scan-finished webhook** (generic / Discord / ntfy,
+  counts-only payload).
+- **CLI mode:** `-scan-once` with documented exit codes and a
+  data-folder lock shared with the server (a second instance
+  refuses cleanly instead of corrupting state).
+- **Subtitle wizard, complete:** overview, fingerprint-bound
+  dismissals, relabel with undo, guarded delete, coverage and
+  gap views, and OpenSubtitles search/download with your own
+  API key (mock-verified; see limitations).
+- **Missing episodes, subtitle coverage, folder hygiene**
+  (orphan sidecars, empty folders).
+- **Embedded-subtitle audit toggle** in Settings (it can
+  finally be switched off; off means off — no extraction, no
+  embedded findings).
+- 0.7.0 brought: `install.sh` (install / update-with-rollback
+  / uninstall on any Linux server), the ARM64 build, and the
+  WellKeptLib name (display surfaces only; plumbing names
+  unchanged, existing installs update in place).
 
 ## License
 

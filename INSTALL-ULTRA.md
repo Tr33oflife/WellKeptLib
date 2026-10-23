@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v0.7.0)
+# Install — Ultra.cc (WellKeptLib v1.0.0)
 
 ## Easy way: run ./install.sh
 
@@ -248,7 +248,55 @@ first scan of a large library, the library results appear right
 after probing finishes — the embedded-subtitle audit keeps
 running afterwards (the header shows it) and folds its findings
 in when done, and the audit is cached per file, so later scans
-skip it for unchanged files.
+skip it for unchanged files. **New in v0.8.0:** if you don't need
+the embedded check at all, turn it off — **Settings → Embedded
+subtitle audit**. With it off, scans finish at the probe results:
+no embedded tracks are extracted or checked, the Subtitles tab
+shows external subtitle files only, and it says so at the top of
+the tab. Turn it back on and the next scan re-audits, reusing the
+per-file cache for anything unchanged.
+
+**New in v0.9.0:** the Subtitles tab opens with a count of every
+problem class and a **Fix step by step** wizard: mislabeled
+external subtitle files can be relabeled to the detected
+language (preview → apply → undo, exactly like Organize),
+findings you have checked can be marked verified so they stop
+flagging (they resurface if the file changes), and a coverage
+list shows which items lack subtitles in your wanted languages
+(**Settings → Wanted languages**, default `eng`). The Library
+tab lists episodes missing between the first and last present
+in each season, and Health now also flags orphan sidecar files
+(subtitles/.nfo/artwork whose video is gone). Embedded tracks
+are never renamed or deleted — their path is the video file
+itself, and the app does not rewrite media.
+
+**New in v1.0.0:** the milestone release. **Duplicates are now
+hardlink-aware**: groups show file entries vs physical copies,
+copies hardlinked to the keeper are marked, and the
+**reclaimable** figure counts only what deleting down to one
+physical copy would actually free (the old figure remains as
+*apparent*). A **Report** tab totals the whole library from the
+same numbers the tabs show, with CSV + standalone HTML
+downloads; a **History** tab keeps the last 50 scans with
+per-scan deltas. Under **Settings → Automation**: **scheduled
+scans** (every N hours or daily at a set time — in-process, so
+the app must be running; a due scan that finds the app busy is
+skipped and recorded, never queued) and a **scan-finished
+webhook** (generic JSON / Discord / ntfy; counts only, never
+paths or credentials; fire-and-forget — a dead endpoint can't
+slow a scan). The binary also gains a headless mode:
+`plex-file-manager -scan-once [-report out.json]
+[-fail-on-findings]` runs one scan and exits (0 done · 1 scan
+failed · 2 config error or data dir locked · 3 findings with
+`-fail-on-findings`). Only one process may own a data dir now —
+a second instance refuses with a clear message instead of
+interleaving writes. Finally, the subtitle wizard can
+**download missing subtitles from OpenSubtitles** (Step F):
+bring your own API key in **Settings → OpenSubtitles**
+(downloads also need your account login; they count against
+your quota, and the wizard shows the remaining number the API
+itself reports). Downloads are verified with the app's own
+language detector and never overwrite an existing file.
 
 ## Security note (optional but read it)
 

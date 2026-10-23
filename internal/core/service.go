@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "0.7.0"
+const Version = "1.0.0"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -49,6 +49,21 @@ type StateInfo struct {
 	// preserved as config.json.corrupt and defaults are in use.
 	// Empty when the config loaded fine. Shown in Settings.
 	ConfigWarning string `json:"config_warning,omitempty"`
+	// EmbeddedAudit (v0.8.0): the CURRENT Settings value of the
+	// embedded-subtitle audit switch, mirrored here so the UI can
+	// show the Subtitles tab's "checking is off" notice from the
+	// same poll that carries the scan state — the scan's own
+	// outcome marker is ScanState.AuditSkipped.
+	EmbeddedAudit bool `json:"embedded_audit"`
+	// Schedule (v1.0.0): the in-process scheduler's public face —
+	// whether it is enabled, when it will next fire (RFC3339,
+	// empty when disabled or unscheduled), and the last thing it
+	// did or skipped (plain language, e.g. "skipped 14:00 —
+	// a scan was already running"). The settings themselves live
+	// in Config; this is the live status.
+	ScheduleEnabled  bool   `json:"schedule_enabled"`
+	ScheduleNextRun  string `json:"schedule_next_run,omitempty"`
+	ScheduleLastNote string `json:"schedule_last_note,omitempty"`
 	// PlexServerName (v0.3.1): the connected server's display name
 	// from the saved settings — "Connected ✓ — <name>" with no live
 	// call. Empty until a sign-in or a successful test learns it.
@@ -116,6 +131,37 @@ type Service struct {
 	// plex.json (plexSettings.AccountToken) and rehydrated into
 	// this field at startup. Guarded by mu like everything else.
 	retained *retainedSignIn
+	// dismissals (v0.9.0, subtitle_dismissals.go): the user's
+	// "verified / intentional" marks for subtitle findings and
+	// coverage items, loaded from subtitle-dismissals.json at
+	// startup and saved on every change. Guarded by mu.
+	dismissals []SubtitleDismissal
+	// scanTrigger (v1.0.0): who asked for the scan that is
+	// about to run — "manual" | "scheduled" | "cli" — set by the
+	// start path under mu and consumed by runScan for the
+	// history record. Guarded by mu.
+	scanTrigger string
+	// history (v1.0.0, history.go): the compact per-scan
+	// records, loaded from scan-history.json at startup and
+	// rewritten on every completed scan. Guarded by mu.
+	history []ScanHistoryRecord
+	// Scheduler bookkeeping (v1.0.0, scheduler.go): the last
+	// scheduler action in plain language, and whether the
+	// startup catch-up check has run. Guarded by mu.
+	schedNote     string
+	schedNoteAt   time.Time
+	schedulerLive bool
+	// Webhook bookkeeping (v1.0.0, webhook.go): the last
+	// delivery attempt's outcome, surfaced in diagnostics.
+	// Guarded by mu.
+	webhookLast webhookStatus
+	// OpenSubtitles (v1.0.0, opensubtitles.go): the user's own
+	// credentials (opensubtitles.json, 0600, never returned by
+	// any API) and the in-memory login session (JWT + the
+	// user-specific base URL + the quota the API last reported).
+	// Guarded by mu; network calls never hold it.
+	osSecrets *osSecretsFile
+	osSession *osSession
 }
 
 // NewService loads config, the probe cache, and the last scan results
@@ -153,6 +199,14 @@ func NewService(dataDir string) (*Service, error) {
 	if b, err := os.ReadFile(filepath.Join(dataDir, "scan.json")); err == nil {
 		_ = json.Unmarshal(b, s.results)
 	}
+	// v0.9.0: load the subtitle dismissal store (best-effort — a
+	// missing or unreadable file means no marks, never a startup
+	// failure).
+	s.dismissals = loadSubtitleDismissals(dataDir)
+	// v1.0.0: scan history + the OpenSubtitles secrets file,
+	// both best-effort loads (missing = empty/unconfigured).
+	s.history = loadScanHistory(dataDir)
+	s.osSecrets = loadOSSecrets(dataDir)
 	if s.results.Items == nil {
 		s.results.Items = []*Item{}
 	}
@@ -177,6 +231,14 @@ func (s *Service) State() StateInfo {
 		PlexURL:        s.plex.URL,
 		PlexServerName: s.plex.ServerName,
 		ConfigWarning:  s.configWarning,
+		EmbeddedAudit:  s.cfg.EmbeddedAudit,
+	}
+	// v1.0.0: scheduler status (computed fresh — the next run
+	// depends on the clock, not on stored state).
+	info.ScheduleEnabled = s.cfg.ScheduleEnabled
+	info.ScheduleLastNote = s.schedNote
+	if next, ok := s.scheduleNextRunLocked(time.Now()); ok {
+		info.ScheduleNextRun = next.UTC().Format(time.RFC3339)
 	}
 	info.Scan.Summary = s.currentSummaryLocked()
 	return info
@@ -192,11 +254,29 @@ func (s *Service) currentSummaryLocked() ScanSummary {
 	groups, stats := buildDuplicates(s.results.Items, s.cfg, s.cfg.Exclusions)
 	sum.DuplicateGroups = len(groups)
 	sum.DuplicateWasted = 0
+	sum.DuplicateReclaimable = 0
 	for _, g := range groups {
 		sum.DuplicateWasted += g.WastedBytes
+		sum.DuplicateReclaimable += g.ReclaimableBytes
 	}
 	sum.ExcludedDupCopies = stats.ExcludedCopies
 	sum.ExclusionCount = len(s.cfg.Exclusions)
+	// v0.9.0 derivations ride the same recompute, so the header
+	// chips, the persisted summary, and diagnostics never disagree:
+	// episode gaps from the parsed identities (gaps.go) and the
+	// wanted-language coverage classes (coverage.go, dismissed
+	// items excluded there).
+	gaps := buildEpisodeGaps(s.results.Items)
+	sum.GapCount = len(gaps)
+	sum.GapEpisodes = 0
+	for _, g := range gaps {
+		sum.GapEpisodes += g.MissingCount
+	}
+	_, covCounts, _ := s.coverageAllLocked()
+	sum.CoverageCovered = covCounts[coverageCovered]
+	sum.CoverageNoWanted = covCounts[coverageNoWanted]
+	sum.CoverageNoSubtitles = covCounts[coverageNone]
+	sum.CoverageUnverifiable = covCounts[coverageUnverifiable]
 	return sum
 }
 
@@ -209,6 +289,19 @@ func (s *Service) currentSummaryLocked() ScanSummary {
 // with the usable subset. A bad root is never silently scanned as
 // an empty library again.
 func (s *Service) StartScan(roots []string) (ScanState, error) {
+	return s.startScan(roots, "manual")
+}
+
+// StartScanTriggered is StartScan with the trigger recorded for
+// the scan-history record (v1.0.0): "scheduled" from the
+// in-process scheduler, "cli" from the one-shot CLI mode. The
+// scan itself is identical — same roots validation, same
+// guards, same pipeline.
+func (s *Service) StartScanTriggered(roots []string, trigger string) (ScanState, error) {
+	return s.startScan(roots, trigger)
+}
+
+func (s *Service) startScan(roots []string, trigger string) (ScanState, error) {
 	s.mu.Lock()
 	if s.state.Running {
 		st := s.state
@@ -239,6 +332,7 @@ func (s *Service) StartScan(roots []string) (ScanState, error) {
 	_ = s.saveConfigLocked()
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	s.scanTrigger = trigger
 	s.state = ScanState{Running: true, Phase: "walking", StartedAt: time.Now().UTC().Format(time.RFC3339), RootProblems: problems}
 	st := s.state
 	s.mu.Unlock()
@@ -309,7 +403,26 @@ func (s *Service) Series() []SeriesAgg {
 func (s *Service) filteredSubtitlesLocked() []SubtitleFinding {
 	out := []SubtitleFinding{}
 	for _, f := range s.results.Subtitles {
+		// v0.8.0: while the embedded audit is OFF in Settings,
+		// embedded findings are not published at all — not even
+		// ones an earlier audit-on scan left in the results — so
+		// the Subtitles view (and the summary count and the
+		// export, which share this filter) honestly shows
+		// external findings only, never stale embedded results.
+		if !s.cfg.EmbeddedAudit && f.Source == "embedded" {
+			continue
+		}
 		if isExcluded(s.cfg.Exclusions, f.Path, "subtitles") {
+			continue
+		}
+		// v0.9.0: a finding the user marked verified/intentional
+		// (subtitle_dismissals.go) is suppressed exactly like an
+		// excluded one — from this list, and therefore from the
+		// summary count, the wizard counts, and the export, which
+		// all share this filter. The dismissal only holds while
+		// the file's fingerprint (size + mtime) still matches the
+		// mark; a changed file resurfaces its finding.
+		if s.findingDismissedLocked(f) {
 			continue
 		}
 		out = append(out, f)
@@ -373,6 +486,18 @@ func (s *Service) SaveConfig(in Config) error {
 	if in.Exclusions == nil {
 		in.Exclusions = s.cfg.Exclusions
 	}
+	// WantedLanguages (v0.9.0) follows the Exclusions pattern: a
+	// nil list means "not part of this save" and the current list
+	// is kept; a submitted list is normalized, and an empty result
+	// falls back to the default rather than wanting nothing.
+	if in.WantedLanguages == nil {
+		in.WantedLanguages = s.cfg.WantedLanguages
+	} else {
+		in.WantedLanguages = normalizeWantedLanguages(in.WantedLanguages)
+		if len(in.WantedLanguages) == 0 {
+			in.WantedLanguages = []string{"eng"}
+		}
+	}
 	if in.Workers < 1 {
 		in.Workers = 4 // v0.3.1: matches the new default (was 2)
 	}
@@ -385,12 +510,40 @@ func (s *Service) SaveConfig(in Config) error {
 	if in.TinyFileFloorBytes < 0 {
 		in.TinyFileFloorBytes = 0
 	}
+	// EmbeddedAudit (v0.8.0) is a plain bool: no clamp applies and
+	// the saved value is taken exactly as submitted — the Settings
+	// form always sends it, and other saves start from the current
+	// config (Object.assign over GetConfig's copy in the page).
 	// v0.5.0 tuning fields: clamped the same way Workers is above
 	// (non-positive = unset -> default; out-of-range -> bound).
 	in.ProbeTimeoutSec = clampTuningInt(in.ProbeTimeoutSec, 5, 600, defaultProbeTimeoutSec)
 	in.SubtitleSampleSec = clampTuningInt(in.SubtitleSampleSec, 10, 900, defaultSubtitleSampleSec)
 	in.SubtitleExtractTimeoutSec = clampTuningInt(in.SubtitleExtractTimeoutSec, 5, 600, defaultSubtitleExtractTimeoutSec)
 	in.SubtitleMaxTracks = clampTuningInt(in.SubtitleMaxTracks, 1, 20, defaultSubtitleMaxTracks)
+	// v1.0.0 automation preferences (NOT tuning — ResetTuning
+	// never touches them): the schedule interval is clamped to
+	// a sane range (0 = unset), a daily time must parse as
+	// HH:MM (an unparseable value is a save error, not a silent
+	// clear — the user typed it and should hear about it), and
+	// the webhook flavor falls back to generic on anything
+	// unrecognized.
+	if in.ScheduleIntervalHours < 0 {
+		in.ScheduleIntervalHours = 0
+	}
+	if in.ScheduleIntervalHours > 24*7 {
+		in.ScheduleIntervalHours = 24 * 7
+	}
+	if in.ScheduleDailyTime != "" {
+		if _, _, err := parseDailyTime(in.ScheduleDailyTime); err != nil {
+			return err
+		}
+	}
+	switch in.WebhookFlavor {
+	case "generic", "discord", "ntfy":
+	default:
+		in.WebhookFlavor = "generic"
+	}
+	in.WebhookURL = strings.TrimSpace(in.WebhookURL)
 	// Roots saved through Settings get the same input hygiene as
 	// roots sent to StartScan (quotes/tilde/env expansion, v0.1.1).
 	cleaned := make([]string, 0, len(in.Roots))
@@ -407,7 +560,8 @@ func (s *Service) SaveConfig(in Config) error {
 
 // ResetTuning resets ONLY the tuning knobs — Workers,
 // SubtitleConfidence, the duration tolerances, the tiny-file
-// floor, and the four v0.5.0 probe/subtitle values — back to
+// floor, the four v0.5.0 probe/subtitle values, and (v0.8.0)
+// the EmbeddedAudit switch, which resets to ON — back to
 // their defaults, persists, and returns the resulting config.
 // Roots, Exclusions, and the ffprobe/ffmpeg paths are the user's
 // setup, not tuning, and are deliberately left untouched
@@ -425,6 +579,7 @@ func (s *Service) ResetTuning() (Config, error) {
 	s.cfg.SubtitleSampleSec = d.SubtitleSampleSec
 	s.cfg.SubtitleExtractTimeoutSec = d.SubtitleExtractTimeoutSec
 	s.cfg.SubtitleMaxTracks = d.SubtitleMaxTracks
+	s.cfg.EmbeddedAudit = d.EmbeddedAudit
 	if err := s.saveConfigLocked(); err != nil {
 		return Config{}, err
 	}

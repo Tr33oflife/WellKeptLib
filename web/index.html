@@ -260,6 +260,8 @@
     <button data-tab="duplicates">Duplicates <span class="n" id="n-dup"></span></button>
     <button data-tab="health">Health <span class="n" id="n-health"></span></button>
     <button data-tab="organize">Organize</button>
+    <button data-tab="report">Report</button>
+    <button data-tab="history">History</button>
     <button data-tab="settings">Settings</button>
   </nav>
 
@@ -279,6 +281,12 @@
       <a href="api/export.csv" id="link-export-csv">Export CSV</a>
     </div>
     <div id="series-block"></div>
+    <!-- Missing episodes (v0.9.0): gap rows derived from the
+         parsed episode identities — read-only information
+         ("missing between first and last present"), rendered
+         by refreshLibrary from /api/gaps. Empty when no season
+         has holes. -->
+    <div id="lib-gaps"></div>
     <div style="overflow-x:auto"><table id="lib-table">
       <thead><tr><th>Title</th><th>Type</th><th>Year / S·E</th><th>Size</th><th>Duration</th><th>Res</th><th>Codec</th><th>Path</th><th></th></tr></thead>
       <tbody></tbody>
@@ -295,11 +303,41 @@
          (state.audit_pending), so external-only findings are
          never mistaken for the complete audit. -->
     <div id="sub-audit-notice" style="display:none;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2);margin-bottom:12px">Embedded subtitle audit still running — findings below are external subtitles only for now.</div>
+    <!-- v0.8.0: shown when the embedded audit is OFF in Settings
+         (state.embedded_audit false, no audit pending): findings
+         below are external files only because embedded checking
+         is disabled — not because it is still running. -->
+    <div id="sub-audit-off-notice" style="display:none;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2);margin-bottom:12px">Embedded subtitle checking is <b>off</b> in Settings — findings below are external subtitle files only, and embedded tracks are not checked. Turn it on under Settings → Embedded subtitle audit to include them.</div>
+    <!-- Wizard (v0.9.0, W1–W3): the Step 0 overview strip counts
+         every problem class over the same findings the table
+         below shows; clicking a class opens the step-by-step
+         panel at that step. The wizard is a layer OVER the
+         table — the full findings table stays right here. -->
+    <div id="sub-overview" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+    <div class="toolbar">
+      <button class="small" id="btn-wizard-toggle">Fix step by step</button>
+      <span class="small dim" id="sub-note"></span>
+    </div>
+    <div id="sub-wizard" style="display:none;margin-bottom:14px"></div>
+    <div id="sub-confirm" style="display:none;border:1px solid var(--red);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:12px"></div>
+    <div id="sub-relabel-panel" style="display:none;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:12px"></div>
+    <!-- OpenSubtitles picker (v1.0.0, wizard W4–W5): opened from
+         a Step F coverage row's Download button; search results
+         render here with their badges + quota, and Download is
+         always an explicit pick — nothing is auto-chosen. -->
+    <div id="sub-os-panel" style="display:none;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:12px"></div>
     <div style="overflow-x:auto"><table id="sub-table">
       <thead><tr><th>Status</th><th>Declared → Detected</th><th>Conf.</th><th>File</th><th>Evidence (sample lines)</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
     <div class="empty" id="sub-empty">No subtitle findings.</div>
+    <!-- Coverage (v0.9.0): which items have subtitles in a
+         wanted language (Settings → Wanted languages). The
+         list shows only items that need attention; the same
+         derivation feeds the header counts and wizard Step F. -->
+    <h2 style="margin-top:26px">Subtitle coverage</h2>
+    <p class="dim small" style="margin-top:0">Per item: does it have subtitles in one of your wanted languages (embedded tracks + external files)? Image-only tracks (PGS/VobSub) count as present but unverifiable — a tag is a claim, not coverage. Items whose files failed the probe are not counted here at all; they are Health findings.</p>
+    <div id="sub-coverage"></div>
   </section>
 
   <!-- ================= Duplicates ================= -->
@@ -409,6 +447,40 @@
     <div class="empty" id="health-empty">No health findings.</div>
   </section>
 
+  <!-- ================= Report (v1.0.0) =================
+       The library report card: every figure computed from the
+       same derivations the tabs use (one aggregation server-
+       side, so the report can never disagree with the app).
+       Exports are server-rendered downloads: a sectioned CSV
+       and a standalone, self-contained HTML report. -->
+  <section class="panel" id="panel-report">
+    <h2>Library report</h2>
+    <p class="dim small" style="margin-top:0;max-width:840px">One page of headline numbers for the last scan — the same figures the tabs show, because they are computed from the same code. <b>Reclaimable</b> is the honest duplicates figure: what deleting down to one <i>physical</i> copy per group would actually free (hardlinked copies free nothing when removed). The apparent figure counts every extra file entry at full size.</p>
+    <div class="toolbar">
+      <button class="small" id="btn-report-refresh">Refresh</button>
+      <a href="api/report.csv" id="link-report-csv">Download CSV</a>
+      <a href="api/report.html" id="link-report-html">Download HTML report</a>
+      <span class="small dim" id="report-scanned"></span>
+    </div>
+    <div id="report-body"><div class="empty">No report yet — run a scan first.</div></div>
+  </section>
+
+  <!-- ================= History (v1.0.0) =================
+       One compact record per completed scan (kept: the last
+       50) with the delta against the previous record. Deltas
+       describe disk state, never intent: "removed" means "not
+       seen by this scan" — and a root that was not scanned this
+       time never counts its files as removed. -->
+  <section class="panel" id="panel-history">
+    <h2>Scan history</h2>
+    <p class="dim small" style="margin-top:0;max-width:840px">Every completed scan leaves a record: when, how long, what triggered it (manual, scheduled, or the command line), and what changed since the previous scan. Cancelled scans leave no record.</p>
+    <div class="toolbar">
+      <button class="small" id="btn-history-refresh">Refresh</button>
+      <span class="small dim" id="history-note"></span>
+    </div>
+    <div id="history-body"><div class="empty">No scans recorded yet.</div></div>
+  </section>
+
   <!-- ================= Organize (v0.3.0) =================
        The app's ONLY file-moving feature. Flow: pick a folder,
        preview the full Jellyfin plan, then Apply (guarded by an
@@ -451,6 +523,18 @@
         <label>Subtitle sample length (seconds)</label><input id="cfg-sub-sample" type="number" min="10" max="900" style="width:90px">
         <label>Subtitle extraction timeout (seconds)</label><input id="cfg-sub-timeout" type="number" min="5" max="600" style="width:90px">
         <label>Max subtitle tracks sampled per file</label><input id="cfg-sub-tracks" type="number" min="1" max="20" style="width:90px">
+        <!-- Embedded-audit master switch (v0.8.0): the tuning
+             numbers above adjust HOW the embedded audit runs; this
+             is the missing whether-it-runs-at-all switch. -->
+        <label>Embedded subtitle audit</label>
+        <div class="small"><input type="checkbox" id="cfg-embedded-audit" style="vertical-align:-2px"> Check embedded subtitle tracks during scans</div>
+        <p class="dim small" style="margin:6px 0 0;max-width:560px">On: embedded tracks are sampled and language-checked (can be slow on a first scan of a large library). Off: scans finish at the probe results and embedded tracks are not checked — subtitle findings cover external files only.</p>
+        <!-- Wanted languages (v0.9.0): the coverage check's
+             wanted set. A preference, not tuning — Reset tuning
+             deliberately leaves it alone. -->
+        <label>Wanted subtitle languages</label>
+        <input id="cfg-wanted-langs" style="width:100%" placeholder="eng">
+        <p class="dim small" style="margin:6px 0 0;max-width:560px">Comma-separated language codes (e.g. <span class="mono">eng, spa</span>). The Subtitles tab's coverage check reports which items have subtitles in one of these languages. Both spellings work — <span class="mono">eng</span> and <span class="mono">en</span> are the same want.</p>
         <div style="margin-top:14px"><button class="primary" id="btn-cfg-save">Save settings</button>
         <button id="btn-cfg-reset-tuning">Reset tuning to defaults</button>
         <button id="btn-diagnostics">Download diagnostics</button>
@@ -469,7 +553,70 @@
         <button class="small" id="btn-ex-add" style="margin-left:8px">Add exclusion</button>
         <table id="ex-table" style="margin-top:12px"><thead><tr><th>Path</th><th>Scope</th><th></th></tr></thead><tbody></tbody></table>
         <div class="empty" id="ex-empty">No exclusions.</div>
+        <!-- Verified marks (v0.9.0, wizard W2): findings and
+             coverage items the user marked verified/intentional
+             in the subtitle wizard. A mark holds only while the
+             file is unchanged — a changed file resurfaces on its
+             own. Removing a mark here makes the finding visible
+             again immediately. -->
+        <h2 style="margin-top:26px">Verified subtitle findings</h2>
+        <p class="dim small" style="margin-top:0">Findings and coverage items you marked <i>verified / intentional</i> in the subtitle wizard. A mark stops applying when its file changes. Remove a mark to see the finding again.</p>
+        <table id="dismissals-table" style="margin-top:12px"><thead><tr><th>File</th><th>What</th><th>Marked</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="empty" id="dismissals-empty">Nothing marked verified.</div>
       </div>
+    </div>
+
+    <!-- Automation (v1.0.0): scheduled scans + the scan-finished
+         webhook. Both are PREFERENCES saved with the main Save
+         settings button — Reset tuning deliberately leaves them
+         alone. The scheduler runs inside this app process only:
+         no cron, no OS timer — the app must be running. -->
+    <div id="automation-card" style="margin-top:24px;border-top:1px solid var(--line);padding-top:16px">
+      <h2>Automation</h2>
+      <div class="grid2">
+        <div>
+          <label>Scheduled scans</label>
+          <div class="small"><input type="checkbox" id="cfg-schedule-enabled" style="vertical-align:-2px"> Scan automatically on a schedule</div>
+          <label>Every N hours (interval)</label><input id="cfg-schedule-interval" type="number" min="0" max="168" style="width:110px" placeholder="e.g. 24">
+          <label>…or daily at (HH:MM, local time)</label><input id="cfg-schedule-daily" style="width:110px" placeholder="03:30">
+          <p class="dim small" style="margin:6px 0 0;max-width:560px">Set one or the other — when both are set, the interval wins. A scan that comes due while another scan or a file operation is running is <b>skipped and recorded, never queued</b>. Missed schedules never stack: after downtime, one catch-up scan runs. Applies when you save; the app must be running for scans to fire.</p>
+          <div class="small" id="schedule-status" style="margin-top:8px"></div>
+        </div>
+        <div>
+          <label>Scan-finished webhook</label>
+          <div class="small"><input type="checkbox" id="cfg-webhook-enabled" style="vertical-align:-2px"> POST a summary when a scan finishes</div>
+          <label>Webhook URL</label><input id="cfg-webhook-url" style="width:100%" placeholder="https://…">
+          <label>Flavor</label>
+          <select id="cfg-webhook-flavor">
+            <option value="generic">Generic JSON</option>
+            <option value="discord">Discord</option>
+            <option value="ntfy">ntfy</option>
+          </select>
+          <p class="dim small" style="margin:6px 0 0;max-width:560px">Fires on completion — and on failure, labeled as such; cancelled scans stay silent. The payload carries <b>counts only</b>: no file paths, no credentials. Delivery is fire-and-forget: a dead endpoint can never slow down or fail a scan. Treat the URL itself like a password (Discord/ntfy URLs embed one).</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- OpenSubtitles (v1.0.0, wizard W4–W5): bring-your-own key.
+         The app ships with NO key; the user's own API key +
+         account login live only in opensubtitles.json (0600) in
+         the data folder and are NEVER returned by any API — the
+         inputs below are write-only, exactly like the Plex token. -->
+    <div id="opensubtitles-card" style="margin-top:24px;border-top:1px solid var(--line);padding-top:16px">
+      <h2>OpenSubtitles (optional)</h2>
+      <p class="dim small" style="margin-top:0;max-width:760px">Download missing subtitles from OpenSubtitles from the Subtitles wizard (Step F → <b>Download</b>). This uses <b>your own</b> OpenSubtitles account: create a free API key on their site and paste it here. Search needs only the key; downloads follow their login-first flow, so they also need your account username + password. Downloads count against <b>your</b> account's quota — the wizard shows the remaining number the API itself reports, never a hardcoded one. Credentials are stored in <span class="mono">opensubtitles.json</span> (owner-only permissions) in the app's data folder and are never sent back to this page.</p>
+      <div class="small"><input type="checkbox" id="os-enabled" style="vertical-align:-2px"> Enable OpenSubtitles</div>
+      <div style="max-width:640px">
+        <label>API key</label><input id="os-apikey" type="password" style="width:100%" placeholder="your OpenSubtitles API key" autocomplete="off">
+        <label>Username (for downloads)</label><input id="os-username" style="width:100%" autocomplete="off">
+        <label>Password (for downloads)</label><input id="os-password" type="password" style="width:100%" autocomplete="off">
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="primary" id="btn-os-save">Save OpenSubtitles settings</button>
+        <button class="danger" id="btn-os-clear">Forget credentials</button>
+        <span class="dim small" id="os-status"></span>
+      </div>
+      <p class="dim small" style="margin:6px 0 0;max-width:760px">Leaving a credential field blank keeps the stored value. <b>Forget credentials</b> erases all three.</p>
     </div>
 
     <!-- Plex (optional) — v0.2.0 library import; v0.3.1 made the
@@ -587,6 +734,28 @@ const api = {
   organizeApply:     (plan_id) => jfetch("api/organize/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({plan_id})}),
   organizeUndo:      (manifest_id) => jfetch("api/organize/undo", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({manifest_id})}),
   organizeManifests: () => jfetch("api/organize/manifests"),
+  // v0.9.0 — gaps, coverage, and the subtitle wizard (W1–W3).
+  gaps:        () => jfetch("api/gaps"),
+  coverage:    () => jfetch("api/coverage"),
+  subOverview: () => jfetch("api/subtitles/overview"),
+  subDismissals:() => jfetch("api/subtitles/dismissals"),
+  subDismiss:  (body) => jfetch("api/subtitles/dismiss", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}),
+  subUndismiss:(body) => jfetch("api/subtitles/undismiss", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}),
+  subDelete:   (path) => jfetch("api/subtitles/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path})}),
+  relabelPreview:(paths) => jfetch("api/subtitles/relabel/preview", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({paths})}),
+  relabelApply:  (paths) => jfetch("api/subtitles/relabel/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({paths})}),
+  relabelUndo:   (manifest_id) => jfetch("api/subtitles/relabel/undo", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({manifest_id})}),
+  subManifests:  () => jfetch("api/subtitles/manifests"),
+  // v1.0.0 — report card, scan history, OpenSubtitles (W4–W5).
+  // The report CSV/HTML are plain download links (in the panel
+  // markup); only the JSON card goes through here.
+  report:      () => jfetch("api/report"),
+  history:     () => jfetch("api/history"),
+  osSettings:  () => jfetch("api/opensubtitles/settings"),
+  osSave:      (body) => jfetch("api/opensubtitles/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}),
+  osSearch:    (body) => jfetch("api/opensubtitles/search", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}),
+  osDownload:  (body) => jfetch("api/opensubtitles/download", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)}),
+  osActions:   () => jfetch("api/opensubtitles/actions"),
 };
 
 /* ================= UI helpers ================= */
@@ -625,6 +794,11 @@ document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click
   document.querySelectorAll("section.panel").forEach(x => x.classList.remove("active"));
   b.classList.add("active");
   $("panel-" + b.dataset.tab).classList.add("active");
+  // v1.0.0: the report + history tabs fetch on open (they are
+  // also kept fresh by refreshAll, but a tab opened after a
+  // scan finishes mid-session must not show the stale copy).
+  if (b.dataset.tab === "report") refreshReport();
+  if (b.dataset.tab === "history") refreshHistory();
 }));
 
 /* === backnav: in-app history for the Android back button (portable) === */
@@ -779,6 +953,17 @@ async function refreshState(){
   const cfgWarn = $("cfg-warning");
   if (st.config_warning){ cfgWarn.textContent = "⚠ " + st.config_warning; cfgWarn.style.display = "block"; }
   else cfgWarn.style.display = "none";
+  // Schedule status (v1.0.0): next run + the scheduler's last
+  // action, from the same state poll — no extra endpoint.
+  const schedEl = $("schedule-status");
+  if (schedEl){
+    if (!st.schedule_enabled) schedEl.innerHTML = '<span class="dim">Scheduler is off.</span>';
+    else {
+      let t = "<b>Next scheduled scan:</b> " + (st.schedule_next_run ? esc(st.schedule_next_run.replace("T", " ").replace("Z", " UTC")) : "—");
+      if (st.schedule_last_note) t += '<br><span class="dim">Last scheduler action: ' + esc(st.schedule_last_note) + "</span>";
+      schedEl.innerHTML = t;
+    }
+  }
   const plexOn = !!st.plex_configured;
   $("btn-import").title = plexOn ? ("Import library roots from " + (st.plex_server_name || st.plex_url || "Plex")) : "Connect Plex in Settings first";
   $("btn-missing").title = plexOn ? "Cross-check Plex items against this disk" : "Connect Plex in Settings first";
@@ -821,6 +1006,10 @@ async function refreshState(){
   if (sc.running && lastDupSig && dupSig !== lastDupSig) refreshDuplicates();
   lastDupSig = dupSig;
   $("sub-audit-notice").style.display = sc.audit_pending ? "block" : "none";
+  // v0.8.0: the off notice mirrors the pending one — it keys on
+  // the CURRENT setting (state.embedded_audit), so it appears the
+  // moment the switch is off, even before the next scan runs.
+  $("sub-audit-off-notice").style.display = (!sc.audit_pending && st.embedded_audit === false) ? "block" : "none";
   $("n-sub").textContent = sum.subtitle_findings ? "(" + sum.subtitle_findings + ")" : "";
   $("n-dup").textContent = sum.duplicate_groups ? "(" + sum.duplicate_groups + ")" : "";
   $("n-health").textContent = sum.health_findings ? "(" + sum.health_findings + ")" : "";
@@ -830,6 +1019,7 @@ async function refreshState(){
 /* ================= Library ================= */
 async function refreshLibrary(){
   const [lib, ser] = await Promise.all([api.library($("lib-sort").value, $("lib-order").value), api.series()]);
+  renderGaps();
   const items = lib.items || [];
   $("lib-empty").style.display = items.length ? "none" : "block";
   document.querySelector("#lib-table tbody").innerHTML = items.map(it => {
@@ -859,8 +1049,12 @@ $("link-export-csv").href = BASE + "api/export.csv";
 
 /* ================= Subtitles ================= */
 async function refreshSubtitles(){
+  // v1.0.0: the wizard's Step F Download buttons depend on the
+  // OpenSubtitles presence view — load it before rendering.
+  if (!osSettingsView) await refreshOSSettings();
   const data = await api.subtitles();
   const rows = data.findings || [];
+  subFindings = rows;
   $("sub-empty").style.display = rows.length ? "none" : "block";
   const badge = {"mismatch":"b-red","missing-language":"b-amber","uncertain":"b-amber","cannot-verify":"b-dim"};
   document.querySelector("#sub-table tbody").innerHTML = rows.map(f =>
@@ -870,8 +1064,315 @@ async function refreshSubtitles(){
     (f.confidence ? Math.round(f.confidence*100) + "%" : "—") + '<div class="small dim">' + (f.words||0) + " words</div></td>" +
     '<td class="mono dim">' + esc(f.path) + '<div class="small">' + esc(f.note||"") + "</div></td>" +
     '<td class="sample">' + (f.sample||[]).map(esc).join("<br>") + "</td>" +
-    '<td><button class="small" onclick="exclude(this.dataset.p,\'subtitles\')" data-p="' + esc(f.path) + '">Exclude</button></td></tr>'
+    '<td style="white-space:nowrap"><button class="small" onclick="dismissFindingBtn(this)" data-p="' + esc(f.path) + '" data-s="' + esc(f.source) + '" data-i="' + (f.stream_index||0) + '">✓ Verified</button> ' +
+    '<button class="small" onclick="exclude(this.dataset.p,\'subtitles\')" data-p="' + esc(f.path) + '">Exclude</button></td></tr>'
   ).join("");
+  refreshWizard();
+}
+
+/* ================= Subtitle wizard + coverage + gaps (v0.9.0) =====
+   W1 Step 0: renderSubOverview counts every problem class over
+   the SAME findings the table shows (server-side, from
+   /api/subtitles/overview) — clicking a class opens the wizard
+   at that step. W2: mark-verified buttons post to the dismissal
+   store; marks are managed in Settings. W3: relabel (preview ->
+   apply -> undo via manifest) and the guarded subtitle delete.
+   The full findings table above is untouched by all of this:
+   the wizard is a layer over it, not a replacement. */
+let subFindings = [];
+let subOverviewData = null;
+let coverageData = null;
+let subManifestList = [];
+let wizardOpen = false;
+
+function subNote(msg){ $("sub-note").innerHTML = msg; }
+function subErr(e){ subNote('<span style="color:var(--red)">' + esc(e.message || String(e)) + "</span>"); }
+
+async function refreshWizard(){
+  try{
+    const [ov, cov, mans] = await Promise.all([api.subOverview(), api.coverage(), api.subManifests()]);
+    subOverviewData = ov; coverageData = cov; subManifestList = mans.manifests || [];
+    renderSubOverview();
+    renderCoverageSection();
+    if (wizardOpen) renderWizard();
+  }catch(e){ /* the overview/wizard are additive — the findings table already rendered */ }
+}
+
+function renderSubOverview(){
+  const ov = subOverviewData;
+  const el = $("sub-overview");
+  if (!ov){ el.innerHTML = ""; return; }
+  const chip = (n, label, step, cls) =>
+    '<span class="chip ' + (cls||"") + '" style="cursor:pointer" title="Open the step-by-step fix list" onclick="openWizard(\'' + step + '\')"><b>' + n + "</b> " + label + "</span>";
+  let h = "";
+  if (ov.audit_pending) h += '<span class="chip warn">Embedded audit still running — counts are provisional</span>';
+  if (ov.audit_skipped) h += '<span class="chip info">The last scan ran with embedded checking off</span>';
+  h += chip(ov.external_mismatch, "external files mislabeled", "A", "warn");
+  h += chip(ov.embedded_mismatch, "embedded tracks mislabeled", "B", "warn");
+  h += chip(ov.missing_language, "no language in the name", "C", "");
+  h += chip(ov.uncertain, "detector unsure", "D", "");
+  h += chip(ov.cannot_verify, "cannot verify", "E", "");
+  const covAttention = ov.coverage_no_wanted + ov.coverage_no_subtitles + ov.coverage_unverifiable;
+  h += chip(covAttention, "items lack a wanted subtitle", "F", covAttention ? "warn" : "good");
+  if (ov.dismissed) h += '<span class="chip info"><b>' + ov.dismissed + "</b> marked verified by you (Settings)</span>";
+  if (ov.gap_count) h += '<span class="chip"><b>' + ov.gap_episodes + "</b> episodes missing in " + ov.gap_count + " season(s) — see Library</span>";
+  el.innerHTML = h;
+}
+
+function openWizard(step){
+  wizardOpen = true;
+  $("sub-wizard").style.display = "block";
+  $("btn-wizard-toggle").textContent = "Hide step by step";
+  renderWizard();
+  if (step){
+    const target = document.getElementById("wiz-step-" + step);
+    if (target) target.scrollIntoView({block: "nearest"});
+  }
+}
+$("btn-wizard-toggle").addEventListener("click", () => {
+  if (wizardOpen){
+    wizardOpen = false;
+    $("sub-wizard").style.display = "none";
+    $("btn-wizard-toggle").textContent = "Fix step by step";
+  } else openWizard("");
+});
+
+function wizFindingRow(f, actions){
+  return '<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">' +
+    '<div style="flex:1;min-width:200px"><div class="mono small">' + esc(f.path) + "</div>" +
+    '<div class="small dim">declared ' + esc(f.declared || "—") + " → detected " + esc(f.detected || "—") +
+    (f.confidence ? " · " + Math.round(f.confidence * 100) + "% confidence" : "") +
+    (f.note ? " · " + esc(f.note) : "") + "</div></div>" +
+    '<div style="white-space:nowrap">' + actions + "</div></div>";
+}
+function wizBtnDismiss(f){
+  return '<button class="small" onclick="dismissFindingBtn(this)" data-p="' + esc(f.path) + '" data-s="' + esc(f.source) + '" data-i="' + (f.stream_index || 0) + '">✓ Verified</button> ';
+}
+function wizBtnExclude(f){
+  return '<button class="small" onclick="exclude(this.dataset.p,\'subtitles\')" data-p="' + esc(f.path) + '">Exclude</button> ';
+}
+function wizBtnRelabel(f, guess){
+  return '<button class="small" onclick="relabelAsk(this.dataset.p)" data-p="' + esc(f.path) + '">Relabel to ' + esc(f.detected || "?") + (guess ? " (best guess)" : "") + "</button> ";
+}
+function wizBtnDelete(f){
+  return '<button class="small danger" onclick="subDeleteAsk(this.dataset.p,this.dataset.s)" data-p="' + esc(f.path) + '" data-s="' + esc(f.status) + '">Delete file</button> ';
+}
+function wizStep(id, title, count, intro, rowsHtml){
+  return '<div class="group" id="wiz-step-' + id + '"><h3>' + title +
+    ' <span class="badge ' + (count ? "b-amber" : "b-green") + '">' + count + "</span></h3>" +
+    (intro ? '<p class="dim small" style="margin:0 0 6px">' + intro + "</p>" : "") +
+    (rowsHtml || '<div class="small dim">Nothing here.</div>') + "</div>";
+}
+
+function renderWizard(){
+  const el = $("sub-wizard");
+  if (!subOverviewData || !coverageData){ el.innerHTML = ""; return; }
+  const byClass = (src, status) => subFindings.filter(f => f.source === src && f.status === status);
+  const a = byClass("external", "mismatch");
+  const b = byClass("embedded", "mismatch");
+  const c = subFindings.filter(f => f.status === "missing-language");
+  const d = subFindings.filter(f => f.status === "uncertain");
+  const e = subFindings.filter(f => f.status === "cannot-verify");
+  const fileActions = f => wizBtnRelabel(f, false) + wizBtnDelete(f) + wizBtnDismiss(f) + wizBtnExclude(f);
+  const markActions = f => wizBtnDismiss(f) + wizBtnExclude(f);
+  let h = "";
+  h += wizStep("A", "Step A — External files with the wrong language label", a.length,
+    "The filename claims one language; the text is another. Relabel renames the file so the label matches the text (preview first, undoable). Deleting removes only the subtitle file.",
+    a.map(f => wizFindingRow(f, fileActions(f))).join(""));
+  h += wizStep("B", "Step B — Embedded tracks with the wrong language label", b.length,
+    "These tracks live inside the video files. <b>This app never rewrites media files</b>, so it can't relabel them — check the track in your player, fix it with a tool that edits containers, or mark it verified if the label is right for you.",
+    b.map(f => wizFindingRow(f, markActions(f))).join(""));
+  h += wizStep("C", "Step C — No language in the filename", c.length,
+    "The detector read the text, but the filename never claimed a language. Relabel adds the detected language to the name. Embedded rows follow the Step B rule — mark verified or exclude only.",
+    c.map(f => wizFindingRow(f, f.source === "external" ? fileActions(f) : markActions(f))).join(""));
+  h += wizStep("D", "Step D — The detector is unsure", d.length,
+    "Too little dialogue, or two languages scored too closely. Check the sample lines in the table below before relabeling — the button uses the detector's best guess.",
+    d.map(f => wizFindingRow(f, f.source === "external" ? wizBtnRelabel(f, true) + wizBtnDelete(f) + wizBtnDismiss(f) + wizBtnExclude(f) : markActions(f))).join(""));
+  const ov = subOverviewData;
+  const otherCV = ov.cannot_verify - ov.cannot_verify_image - ov.cannot_verify_cap;
+  h += wizStep("E", "Step E — Cannot verify", e.length,
+    "Image-based tracks (PGS/VobSub) carry no text to check (" + ov.cannot_verify_image + "), and tracks past the per-file sampling cap weren't read (" + ov.cannot_verify_cap + ")" +
+    (otherCV > 0 ? ", plus " + otherCV + " with an unsupported codec or a failed extraction" : "") +
+    ". There is nothing to fix in the file — mark verified if you have checked it another way.",
+    e.map(f => wizFindingRow(f, markActions(f))).join(""));
+  const fItems = coverageData.items || [];
+  h += wizStep("F", "Step F — No wanted-language subtitles", fItems.length,
+    "These items have no subtitle in a wanted language (wanted: " + esc((coverageData.wanted || []).join(", ")) + ")." +
+    (osSettingsView && osSettingsView.enabled && osSettingsView.configured
+      ? " OpenSubtitles is on: each row's <b>Download</b> button searches for a matching subtitle — by content hash first — and places <i>your pick</i> next to the file, never overwriting. Or mark the ones you don't want subtitles for."
+      : " Enable OpenSubtitles in Settings to download missing subtitles from here — or mark the ones you don't want subtitles for."),
+    fItems.map(coverageRow).join(""));
+  if (subManifestList.length){
+    h += '<div class="group"><h3>Past relabels</h3>' + subManifestList.map(m =>
+      '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-soft)">' +
+      '<span class="mono small" style="flex:1">' + esc(m.id) + '</span><span class="small dim">' + esc((m.created_at || "").slice(0, 10)) + " · " + m.moves + " file(s)</span>" +
+      (m.undone ? '<span class="badge b-dim">undone</span>' :
+        '<button class="small" onclick="relabelUndoBtn(this.dataset.m)" data-m="' + esc(m.id) + '">Undo rename</button>') + "</div>").join("") +
+      "</div>";
+  }
+  el.innerHTML = h;
+}
+
+/* Mark verified / not wanted (W2): the mark binds to the file's
+   current fingerprint server-side — a changed file resurfaces. */
+async function dismissFindingBtn(el){
+  try{
+    await api.subDismiss({path: el.dataset.p, source: el.dataset.s, stream_index: parseInt(el.dataset.i || "0", 10)});
+    subNote("Marked verified — it stays hidden while the file is unchanged. Marks are managed in Settings.");
+    await refreshSubtitles(); refreshState();
+  }catch(e){ subErr(e); }
+}
+async function dismissCoverageBtn(el){
+  try{
+    await api.subDismiss({path: el.dataset.p, source: "coverage"});
+    subNote("Marked not wanted — the item leaves the coverage list while the file is unchanged.");
+    await refreshSubtitles(); refreshState();
+  }catch(e){ subErr(e); }
+}
+
+/* Relabel (W3): preview into the panel, apply from the panel,
+   undo from the note line or the Past relabels list. */
+let relabelCurrentPath = "";
+async function relabelAsk(path){
+  try{
+    const r = await api.relabelPreview([path]);
+    const e = (r.entries || [])[0];
+    const panel = $("sub-relabel-panel");
+    if (!e || e.error){
+      relabelCurrentPath = "";
+      panel.innerHTML = '<span style="color:var(--red)">' + esc(e ? e.error : "no plan returned") + "</span>";
+      panel.style.display = "block";
+      return;
+    }
+    relabelCurrentPath = path;
+    panel.innerHTML = "<b>Relabel this subtitle file?</b>" +
+      '<div class="mono small" style="margin:8px 0 2px">' + esc(e.from) + "</div>" +
+      '<div class="mono small" style="margin-bottom:8px">→ ' + esc(e.to) + "</div>" +
+      (e.collision ? '<div class="small" style="color:var(--amber2);margin-bottom:8px">A file already exists at the new name — Apply will skip this file. It is never overwritten.</div>' : "") +
+      '<button class="small primary" onclick="relabelGo()">Rename to ' + esc(baseName(e.to)) + '</button> ' +
+      '<button class="small" onclick="relabelCancel()">Cancel</button>';
+    panel.style.display = "block";
+    panel.scrollIntoView({block: "nearest"});
+  }catch(e){ subErr(e); }
+}
+function relabelCancel(){
+  relabelCurrentPath = "";
+  $("sub-relabel-panel").style.display = "none";
+  $("sub-relabel-panel").innerHTML = "";
+}
+async function relabelGo(){
+  const path = relabelCurrentPath;
+  if (!path) return;
+  try{
+    const res = await api.relabelApply([path]);
+    relabelCancel();
+    if ((res.applied || []).length){
+      subNote("Renamed ✓ — undo record <span class='mono'>" + esc(res.manifest_id) + '</span> <button class="small" onclick="relabelUndoBtn(this.dataset.m)" data-m="' + esc(res.manifest_id) + '">Undo rename</button>');
+    } else {
+      const f = (res.failed || [])[0];
+      subNote('<span style="color:var(--red)">Not renamed: ' + esc(f ? f.error : "nothing was applied") + "</span>");
+    }
+    await refreshSubtitles(); refreshState();
+  }catch(e){ subErr(e); }
+}
+async function relabelUndoBtn(id){
+  try{
+    const r = await api.relabelUndo(id);
+    subNote("Restored " + r.restored + " original name(s)" +
+      (r.failed && r.failed.length ? " — " + r.failed.length + " skipped (" + esc(r.failed[0].error) + ")" : "") +
+      ". Findings for restored names return with the next scan.");
+    await refreshSubtitles(); refreshState();
+  }catch(e){ subErr(e); }
+}
+
+/* Subtitle delete (W3): the Health delete's two-step pattern —
+   inline confirm panel, server re-validates everything
+   (current external finding, under a scan root, regular file;
+   embedded paths refused outright). */
+let subDeletePath = "";
+function subDeleteAsk(path, status){
+  subDeletePath = path;
+  $("sub-confirm").innerHTML =
+    '<div style="margin-bottom:6px"><b style="color:var(--red)">Delete this subtitle file permanently?</b></div>' +
+    '<div class="mono small" style="margin-bottom:4px">' + esc(path) + "</div>" +
+    '<div class="small dim" style="margin-bottom:10px">Finding: ' + esc(status) + " · Only the subtitle file is deleted — never the video.</div>" +
+    '<button class="small danger" onclick="subDeleteGo()">Delete ' + esc(baseName(path)) + "</button> " +
+    '<button class="small" onclick="subDeleteCancel()">Cancel</button>';
+  $("sub-confirm").style.display = "block";
+}
+function subDeleteCancel(){
+  subDeletePath = "";
+  $("sub-confirm").style.display = "none";
+  $("sub-confirm").innerHTML = "";
+}
+async function subDeleteGo(){
+  const path = subDeletePath;
+  if (!path) return;
+  try{
+    await api.subDelete(path);
+    subDeleteCancel();
+    subNote("Deleted <b>" + esc(baseName(path)) + "</b>.");
+    await refreshSubtitles(); refreshState();
+  }catch(e){
+    subDeleteCancel();
+    subErr(e);
+  }
+}
+
+/* Coverage section: counts + the attention list. The rows are
+   the same builder wizard Step F uses — one derivation, one
+   presentation. */
+function coverageRow(ci){
+  const badge = {"no-wanted": "b-amber", "none": "b-red", "unverifiable": "b-blue"}[ci.class] || "b-dim";
+  const label = {"no-wanted": "other languages only", "none": "no subtitles", "unverifiable": "image-only — unverifiable"}[ci.class] || ci.class;
+  return '<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">' +
+    '<div style="flex:1;min-width:200px"><b>' + esc(ci.title) + '</b> <span class="badge ' + badge + '">' + label + "</span>" +
+    '<div class="mono small dim">' + esc(ci.path) + "</div>" +
+    ((ci.languages || []).length ? '<div class="small dim">subtitle languages present: ' + ci.languages.map(esc).join(", ") + "</div>" : "") +
+    (ci.notes || []).map(n => '<div class="small dim">' + esc(n) + "</div>").join("") +
+    '</div><div style="white-space:nowrap">' +
+    (osSettingsView && osSettingsView.enabled && osSettingsView.configured
+      ? '<button class="small primary" onclick="osOpenPicker(this)" data-p="' + esc(ci.path) + '" data-l="' + esc((coverageData.wanted || ["en"])[0]) + '">Download</button> ' : "") +
+    '<button class="small" onclick="dismissCoverageBtn(this)" data-p="' + esc(ci.path) + '">Not wanted</button></div></div>';
+}
+function renderCoverageSection(){
+  const el = $("sub-coverage");
+  if (!coverageData){ el.innerHTML = ""; return; }
+  const c = coverageData;
+  const total = c.covered + c.no_wanted + c.none + c.unverifiable;
+  if (!total && !c.dismissed){
+    el.innerHTML = '<div class="empty">No coverage data yet — run a scan.</div>';
+    return;
+  }
+  let h = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">' +
+    '<span class="chip good"><b>' + c.covered + "</b> have a wanted language</span>" +
+    '<span class="chip warn"><b>' + c.no_wanted + "</b> other languages only</span>" +
+    '<span class="chip warn"><b>' + c.none + "</b> no subtitles</span>" +
+    '<span class="chip info"><b>' + c.unverifiable + "</b> image-only (unverifiable)</span>" +
+    (c.dismissed ? '<span class="chip"><b>' + c.dismissed + "</b> marked not wanted</span>" : "") + "</div>";
+  h += (c.items || []).length ? c.items.map(coverageRow).join("") :
+    '<div class="empty">Every checked item has a wanted-language subtitle.</div>';
+  el.innerHTML = h;
+}
+
+/* Missing episodes (Library): rows come from /api/gaps; the
+   section renders nothing when no season has holes. */
+async function renderGaps(){
+  try{
+    const data = await api.gaps();
+    const gaps = data.gaps || [];
+    const el = $("lib-gaps");
+    if (!gaps.length){ el.innerHTML = ""; return; }
+    const ep = n => "E" + String(n).padStart(2, "0");
+    el.innerHTML = "<h2>Missing episodes</h2>" +
+      '<p class="dim small" style="margin-top:0">Numbers missing between the first and last episode present in each season. Specials (season 0) are not counted — their numbering is not sequential.</p>' +
+      gaps.map(g => '<div style="padding:6px 0;border-bottom:1px solid var(--line-soft)"><b>' + esc(g.series) + "</b> " +
+        '<span class="mono">S' + String(g.season).padStart(2, "0") + "</span> — missing " +
+        '<span class="mono">' + (g.missing || []).map(ep).join(", ") + (g.truncated ? ", …" : "") + "</span> " +
+        '<span class="badge b-amber">' + g.missing_count + " missing</span>" +
+        (g.absolute ? ' <span class="badge b-blue">absolute numbering — verify against your source</span>' : "") +
+        "</div>").join("") + "<br>";
+  }catch(e){ /* gaps are additive */ }
 }
 
 /* ================= Duplicates =================
@@ -920,16 +1421,19 @@ async function refreshDuplicates(){
 function renderDupSummary(){
   const el = $("dup-summary");
   if (!dupGroups.length){ el.style.display = "none"; el.innerHTML = ""; return; }
-  let wasted = 0, conf = 0, prob = 0, exact = 0;
+  let wasted = 0, reclaim = 0, anyUnknown = false, conf = 0, prob = 0, exact = 0;
   dupGroups.forEach(g => {
     wasted += g.wasted_bytes || 0;
+    reclaim += g.reclaimable_bytes || 0;
+    if (!g.hardlink_known) anyUnknown = true;
     if (g.status === "confirmed") conf++;
     else if (g.status === "probable") prob++;
     if (g.has_exact) exact++;
   });
   el.innerHTML =
     '<span class="chip"><b>' + dupGroups.length + "</b> groups</span>" +
-    '<span class="chip warn">Wasted <b>' + fmtBytes(wasted) + "</b></span>" +
+    '<span class="chip warn">Apparent waste <b>' + fmtBytes(wasted) + "</b></span>" +
+    '<span class="chip warn">Actually reclaimable <b>' + fmtBytes(reclaim) + "</b>" + (anyUnknown ? ' <span class="dim">(some groups estimated — file identity unknown)</span>' : "") + "</span>" +
     '<span class="chip good">Confirmed <b>' + conf + "</b></span>" +
     '<span class="chip info">Probable <b>' + prob + "</b></span>" +
     '<span class="chip info">With exact duplicates <b>' + exact + "</b></span>";
@@ -1019,7 +1523,9 @@ function renderDupGroup(g){
         delta = ' <span class="dup-delta">(' + (d > 0 ? "+" : "-") + fmtDur(Math.abs(d)) + ")</span>";
     }
     return "<tr" + (c.is_keeper ? ' class="dup-keeper"' : "") + "><td>" + check + (c.is_keeper ? '<span class="keeper-chip">★ Keeper</span>' : "") +
-    (c.exact_duplicate ? ' <span class="badge b-blue">exact dup</span>' : "") + '</td><td>' + fmtBytes(c.size) +
+    (c.exact_duplicate ? ' <span class="badge b-blue">exact dup</span>' : "") +
+    (c.hardlink_of_keeper ? ' <span class="badge b-purple" title="Same physical file as the keeper — deleting this entry frees 0 B">hardlink of keeper</span>' : "") +
+    (!c.identity_known ? ' <span class="badge b-dim" title="This platform/filesystem did not provide a file identity — counted as a separate physical file">identity unknown</span>' : "") + '</td><td>' + fmtBytes(c.size) +
     "</td><td>" + (resBest ? '<span class="dup-best">' : "") + esc(c.resolution||"") + (resBest ? "</span>" : "") + (c.hdr ? " HDR" : "") + "</td><td>" + esc(c.codec||"") + "</td><td>" +
     (c.bitrate ? (brBest ? '<span class="dup-best">' : "") + (c.bitrate/1e6).toFixed(1) + " Mbps" + (brBest ? "</span>" : "") : "—") + "</td><td>" + fmtDur(c.duration) + delta +
     '</td><td class="mono dim dup-pathcell"><span class="dup-pathtext" title="' + esc(c.path) + '">' + esc(c.path) + "</span></td>" +
@@ -1036,7 +1542,8 @@ function renderDupGroup(g){
     (g.edition ? ' <span class="badge b-purple">' + esc(g.edition) + "</span>" : "") +
     ' <span class="badge ' + badge + '">' + esc(g.status) + "</span>" +
     (g.has_exact ? ' <span class="badge b-blue">has exact duplicates</span>' : "") +
-    ' <span class="small dim">' + g.copies.length + " copies · Wasted: <b style='color:var(--red)'>" + fmtBytes(g.wasted_bytes || 0) + "</b></span></h3>" +
+    ' <span class="small dim">' + g.copies.length + " copies · Wasted: <b style='color:var(--red)'>" + fmtBytes(g.wasted_bytes || 0) + "</b></span>" +
+    ' <span class="small dim">' + (g.physical_copies || g.copies.length) + " physical · " + (g.file_entries || g.copies.length) + " entries · Reclaimable: <b>" + fmtBytes(g.reclaimable_bytes || 0) + "</b>" + (g.hardlink_known ? "" : " (estimated — file identity unknown)") + "</span></h3>" +
     '<div class="dup-gmeta"><span class="grow small dim">' + esc(g.note||"") + (g.note ? " · " : "") +
     "Keeper: <b>" + esc(baseName(g.keeper_path || "")) + "</b>" + (g.keeper_why ? " — " + esc(g.keeper_why) : "") + "</span>" +
     '<button class="small" onclick="dupSelectAllButKeeper(this.dataset.k)" data-k="' + esc(g.key) + '">Select all but keeper</button> ' +
@@ -1284,6 +1791,17 @@ async function refreshSettings(){
   $("cfg-sub-sample").value = currentCfg.subtitle_sample_sec;
   $("cfg-sub-timeout").value = currentCfg.subtitle_extract_timeout_sec;
   $("cfg-sub-tracks").value = currentCfg.subtitle_max_tracks;
+  $("cfg-embedded-audit").checked = currentCfg.embedded_audit !== false;
+  // Automation (v1.0.0): schedule + webhook preferences, filled
+  // like everything else here; saved by the same Save button.
+  $("cfg-schedule-enabled").checked = !!currentCfg.schedule_enabled;
+  if (document.activeElement !== $("cfg-schedule-interval")) $("cfg-schedule-interval").value = currentCfg.schedule_interval_hours || "";
+  if (document.activeElement !== $("cfg-schedule-daily")) $("cfg-schedule-daily").value = currentCfg.schedule_daily_time || "";
+  $("cfg-webhook-enabled").checked = !!currentCfg.webhook_enabled;
+  if (document.activeElement !== $("cfg-webhook-url")) $("cfg-webhook-url").value = currentCfg.webhook_url || "";
+  $("cfg-webhook-flavor").value = currentCfg.webhook_flavor || "generic";
+  refreshOSSettings();
+  if (document.activeElement !== $("cfg-wanted-langs")) $("cfg-wanted-langs").value = (currentCfg.wanted_languages || ["eng"]).join(", ");
   if (!rootsDirty && document.activeElement !== $("roots")) $("roots").value = (currentCfg.roots||[]).join("\n");
   await refreshPlexSettings();
   const ex = await api.exclusions();
@@ -1293,6 +1811,29 @@ async function refreshSettings(){
     '<tr><td class="mono dim">' + esc(e.path) + "</td><td><span class='badge b-amber'>" + esc(e.scope) + "</span></td>" +
     '<td><button class="small danger" onclick="unexclude(this.dataset.p,this.dataset.s)" data-p="' + esc(e.path) + '" data-s="' + esc(e.scope) + '">Remove</button></td></tr>'
   ).join("");
+  await refreshDismissals();
+}
+/* Verified marks (v0.9.0): the dismissal store's manager —
+   removing a mark makes its finding visible again (refreshAll
+   re-renders the subtitles list + counts). */
+async function refreshDismissals(){
+  try{
+    const data = await api.subDismissals();
+    const list = data.dismissals || [];
+    $("dismissals-empty").style.display = list.length ? "none" : "block";
+    document.querySelector("#dismissals-table tbody").innerHTML = list.map(d =>
+      '<tr><td class="mono dim">' + esc(d.path) + (d.note ? '<div class="small">' + esc(d.note) + "</div>" : "") + "</td>" +
+      "<td><span class='badge b-blue'>" + esc(d.source) + "</span> <span class='badge b-dim'>" + esc(d.class) + "</span></td>" +
+      "<td class='small dim'>" + esc((d.at || "").slice(0, 10)) + "</td>" +
+      '<td><button class="small danger" onclick="undismissBtn(this)" data-p="' + esc(d.path) + '" data-s="' + esc(d.source) + '" data-i="' + (d.stream_index || 0) + '" data-c="' + esc(d.class) + '">Remove</button></td></tr>'
+    ).join("");
+  }catch(e){ /* additive */ }
+}
+async function undismissBtn(el){
+  try{
+    await api.subUndismiss({path: el.dataset.p, source: el.dataset.s, stream_index: parseInt(el.dataset.i || "0", 10), class: el.dataset.c});
+    refreshAll();
+  }catch(e){ alert(e.message); }
 }
 async function unexclude(path, scope){ try{ await api.removeExclusion(path, scope); refreshAll(); }catch(e){ alert(e.message); } }
 $("btn-cfg-save").addEventListener("click", async () => {
@@ -1310,6 +1851,15 @@ $("btn-cfg-save").addEventListener("click", async () => {
     subtitle_sample_sec: parseInt($("cfg-sub-sample").value) || 120,
     subtitle_extract_timeout_sec: parseInt($("cfg-sub-timeout").value) || 45,
     subtitle_max_tracks: parseInt($("cfg-sub-tracks").value) || 6,
+    embedded_audit: $("cfg-embedded-audit").checked,
+    wanted_languages: $("cfg-wanted-langs").value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
+    // Automation (v1.0.0) rides the same save.
+    schedule_enabled: $("cfg-schedule-enabled").checked,
+    schedule_interval_hours: parseInt($("cfg-schedule-interval").value) || 0,
+    schedule_daily_time: $("cfg-schedule-daily").value.trim(),
+    webhook_enabled: $("cfg-webhook-enabled").checked,
+    webhook_url: $("cfg-webhook-url").value.trim(),
+    webhook_flavor: $("cfg-webhook-flavor").value,
   });
   try{ currentCfg = await api.saveConfig(cfg); $("cfg-saved").textContent = "saved ✓"; refreshState(); }
   catch(e){ alert(e.message); }
@@ -1317,9 +1867,11 @@ $("btn-cfg-save").addEventListener("click", async () => {
 /* Reset tuning (v0.5.0): the server resets ONLY the tuning knobs
    (workers, thresholds, timeouts, track cap) — roots, exclusions,
    and tool paths are setup, not tuning, and survive. Native
-   confirm(), the same pattern as the Plex clear/forget actions. */
+   confirm(), the same pattern as the Plex clear/forget actions.
+   v0.8.0: the embedded-audit switch is a tuning knob too — the
+   reset turns it back ON, and the confirm names it. */
 $("btn-cfg-reset-tuning").addEventListener("click", async () => {
-  if (!confirm("Reset the tuning settings (workers, confidence threshold, duration tolerances, tiny-file floor, probe/subtitle timeouts and track cap) to their defaults? Your scan roots, exclusions, and ffprobe/ffmpeg paths are not changed.")) return;
+  if (!confirm("Reset the tuning settings (workers, confidence threshold, duration tolerances, tiny-file floor, probe/subtitle timeouts and track cap, and the embedded subtitle audit switch — back ON) to their defaults? Your scan roots, exclusions, and ffprobe/ffmpeg paths are not changed.")) return;
   try{ currentCfg = await api.resetTuning(); await refreshSettings(); $("cfg-saved").textContent = "tuning reset to defaults ✓"; }
   catch(e){ alert(e.message); }
 });
@@ -1884,9 +2436,210 @@ async function refreshOrganizeManifests(){
   document.querySelectorAll(".org-undo").forEach(b => b.addEventListener("click", () => undoOrganize(b.dataset.mid)));
 }
 
+/* ================= OpenSubtitles (v1.0.0, W4–W5) =================
+   Settings are presence-only from the server (enabled /
+   configured / has_login) — the credential inputs are
+   write-only, like the Plex token. The picker is explicit-pick
+   by design: search ranks (hash matches first), the user
+   downloads, and the result note reports the API's own quota
+   figures and the app's detector verdict — including a plain
+   mismatch warning when they disagree. */
+let osSettingsView = null;
+async function refreshOSSettings(){
+  try{
+    osSettingsView = await api.osSettings();
+    $("os-enabled").checked = !!osSettingsView.enabled;
+    const parts = [];
+    parts.push(osSettingsView.enabled ? "enabled" : "off");
+    parts.push(osSettingsView.configured ? "API key saved" : "no API key saved");
+    parts.push(osSettingsView.has_login ? "account login saved" : "no account login saved (search only)");
+    $("os-status").textContent = parts.join(" · ");
+  }catch(e){ /* additive */ }
+}
+$("btn-os-save").addEventListener("click", async () => {
+  try{
+    osSettingsView = await api.osSave({
+      enabled: $("os-enabled").checked,
+      api_key: $("os-apikey").value.trim(),
+      username: $("os-username").value.trim(),
+      password: $("os-password").value,
+    });
+    $("os-apikey").value = ""; $("os-password").value = "";
+    await refreshOSSettings();
+    $("os-status").textContent += " — saved ✓";
+    refreshSubtitles();
+  }catch(e){ alert(e.message); }
+});
+$("btn-os-clear").addEventListener("click", async () => {
+  if (!confirm("Forget the stored OpenSubtitles API key and account login? Search and download stop working until you enter them again.")) return;
+  try{
+    await api.osSave({enabled: $("os-enabled").checked, clear: true});
+    $("os-apikey").value = ""; $("os-username").value = ""; $("os-password").value = "";
+    await refreshOSSettings();
+    refreshSubtitles();
+  }catch(e){ alert(e.message); }
+});
+
+let osPicker = {path: "", lang: "en", results: [], quota: null, mode: ""};
+async function osOpenPicker(btn){
+  osPicker.path = btn.dataset.p;
+  osPicker.lang = btn.dataset.l || "en";
+  const panel = $("sub-os-panel");
+  panel.style.display = "block";
+  panel.innerHTML = "<b>Download subtitles</b><div class='mono small dim' style='margin:4px 0'>" + esc(osPicker.path) + "</div><div class='small'>Searching OpenSubtitles by content hash…</div>";
+  panel.scrollIntoView({block: "nearest"});
+  await osRunSearch("hash");
+}
+async function osRunSearch(mode){
+  const panel = $("sub-os-panel");
+  osPicker.mode = mode;
+  try{
+    const resp = await api.osSearch({path: osPicker.path, mode, language: osPicker.lang});
+    osPicker.results = resp.results || [];
+    osPicker.quota = resp.quota || null;
+    osRenderPicker(resp.note || "");
+  }catch(e){
+    panel.innerHTML = "<b>Download subtitles</b><div class='small' style='color:var(--red);margin-top:6px'>" + esc(e.message) + "</div>" +
+      '<div style="margin-top:8px"><button class="small" onclick="osClosePicker()">Close</button></div>';
+  }
+}
+function osQuotaText(q){
+  if (!q) return "";
+  if (!q.logged_in) return "Quota: the API reports it with your first download (login) — nothing is hardcoded here.";
+  let t = "Quota: <b>" + (q.remaining >= 0 ? q.remaining : "?") + "</b> downloads remaining";
+  if (q.allowed_downloads) t += " of " + q.allowed_downloads;
+  if (q.reset_time) t += " · resets " + esc(q.reset_time);
+  if (q.level) t += " · account: " + esc(q.level) + (q.vip ? " (VIP)" : "");
+  return t;
+}
+function osRenderPicker(note){
+  const panel = $("sub-os-panel");
+  const rows = osPicker.results.map(r => {
+    const badges =
+      (r.hash_match ? ' <span class="badge b-green">hash match</span>' : "") +
+      (r.from_trusted ? ' <span class="badge b-blue">trusted</span>' : "") +
+      (r.hearing_impaired ? ' <span class="badge b-amber">hearing-impaired</span>' : "") +
+      (r.forced ? ' <span class="badge b-purple">forced</span>' : "") +
+      (r.ai_translated ? ' <span class="badge b-dim">AI-translated</span>' : "") +
+      (r.machine_translated ? ' <span class="badge b-dim">machine-translated</span>' : "");
+    return '<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--line-soft)">' +
+      '<div style="flex:1;min-width:200px"><b>' + esc(r.release || "(untitled release)") + "</b>" + badges +
+      '<div class="small dim">language ' + esc(r.language || "?") + " · " + (r.download_count || 0) + " downloads" + (r.rating ? " · rating " + r.rating : "") + "</div></div>" +
+      '<div style="white-space:nowrap"><button class="small primary" onclick="osDownloadPick(this)" data-f="' + r.file_id + '" data-r="' + esc(r.release || "") + '" data-forced="' + (r.forced ? "1" : "") + '" data-sdh="' + (r.hearing_impaired ? "1" : "") + '">Download</button></div></div>';
+  }).join("");
+  panel.innerHTML = "<b>Download subtitles — " + (osPicker.mode === "hash" ? "by content hash" : "by title search") + "</b>" +
+    '<div class="mono small dim" style="margin:4px 0">' + esc(osPicker.path) + "</div>" +
+    (note ? '<div class="small" style="margin:6px 0">' + esc(note) + "</div>" : "") +
+    (rows || '<div class="empty">No results for this search.</div>') +
+    '<div class="small dim" style="margin-top:8px">' + osQuotaText(osPicker.quota) + "</div>" +
+    '<div id="os-pick-note" class="small" style="margin-top:6px"></div>' +
+    '<div style="margin-top:8px;display:flex;gap:8px">' +
+    (osPicker.mode === "hash" ? '<button class="small" onclick="osRunSearch(\'query\')">Search by title instead</button>' : '<button class="small" onclick="osRunSearch(\'hash\')">Search by hash instead</button>') +
+    '<button class="small" onclick="osClosePicker()">Close</button></div>';
+}
+function osClosePicker(){ $("sub-os-panel").style.display = "none"; }
+async function osDownloadPick(btn){
+  const note = $("os-pick-note");
+  btn.disabled = true;
+  if (note) note.textContent = "Logging in and downloading (counts against your OpenSubtitles quota)…";
+  try{
+    const res = await api.osDownload({
+      path: osPicker.path, file_id: parseInt(btn.dataset.f, 10), language: osPicker.lang,
+      release: btn.dataset.r || "", forced: !!btn.dataset.forced, sdh: !!btn.dataset.sdh,
+    });
+    if (note) note.innerHTML = "<b>Saved:</b> <span class='mono'>" + esc(res.saved_path) + "</span><br>" + esc(res.note || "") +
+      (res.quota_reported ? "<br><span class='dim'>Quota after this download: <b>" + res.remaining + "</b> remaining" + (res.reset_time ? " · resets " + esc(res.reset_time) : "") + "</span>" : "");
+    await refreshSubtitles(); refreshState();
+  }catch(e){
+    if (note) note.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>";
+    btn.disabled = false;
+  }
+}
+
+/* ================= Report (v1.0.0) ================= */
+async function refreshReport(){
+  try{ renderReport(await api.report()); }catch(e){ /* backend not up yet */ }
+}
+$("btn-report-refresh").addEventListener("click", refreshReport);
+function reportStat(label, value, sub){
+  return '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel2);min-width:170px;flex:1">' +
+    '<div class="small dim">' + esc(label) + '</div><div style="font-size:1.35rem;font-weight:700;margin:2px 0">' + value + "</div>" +
+    (sub ? '<div class="small dim">' + sub + "</div>" : "") + "</div>";
+}
+function renderReport(r){
+  const body = $("report-body");
+  if (!r || !r.scanned_at){
+    body.innerHTML = '<div class="empty">No report yet — run a scan first.</div>';
+    $("report-scanned").textContent = "";
+    return;
+  }
+  $("report-scanned").textContent = "Library scanned " + (r.scanned_at || "").replace("T", " ").replace("Z", " UTC") + " · report generated " + (r.generated_at || "").replace("T", " ").replace("Z", " UTC");
+  let h = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    reportStat("Media files", r.media_count, fmtBytes(r.total_bytes) + " total · " + r.subtitle_file_count + " subtitle files") +
+    reportStat("Duplicate groups", r.duplicate_groups, "apparent waste " + fmtBytes(r.duplicate_wasted_bytes)) +
+    reportStat("Actually reclaimable", fmtBytes(r.duplicate_reclaimable_bytes), "deleting down to one physical copy per group" + (r.duplicate_unknown_identity_groups ? " · " + r.duplicate_unknown_identity_groups + " group(s) estimated (file identity unknown)" : "")) +
+    reportStat("Health findings", r.health_total, Object.keys(r.health_by_kind || {}).length + " kinds") +
+    "</div>";
+  h += '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">' +
+    reportStat("Subtitle findings", r.subtitle_findings, Object.entries(r.subtitle_by_status || {}).map(([k, v]) => esc(k) + ": " + v).join(" · ") || "none") +
+    reportStat("Coverage", r.coverage_covered + " covered", r.coverage_no_subtitles + " with no subtitles · " + r.coverage_no_wanted + " none wanted · " + r.coverage_unverifiable + " unverifiable") +
+    reportStat("Episode gaps", r.gap_episodes + " missing", "across " + r.gap_rows + " series/season(s)") +
+    reportStat("Folder hygiene", r.hygiene_findings, "empty folders + orphan sidecars") +
+    "</div>";
+  if ((r.biggest_series || []).length){
+    h += "<h3>Biggest series</h3><table><thead><tr><th>Series</th><th>Files</th><th>Size</th></tr></thead><tbody>" +
+      r.biggest_series.map(s => "<tr><td>" + esc(s.title) + "</td><td>" + s.files + "</td><td>" + fmtBytes(s.bytes) + "</td></tr>").join("") + "</tbody></table>";
+  }
+  if ((r.biggest_files || []).length){
+    h += "<h3>Biggest files</h3><table><thead><tr><th>File</th><th>Size</th></tr></thead><tbody>" +
+      r.biggest_files.map(f => '<tr><td class="mono dim">' + esc(f.path) + "</td><td>" + fmtBytes(f.size) + "</td></tr>").join("") + "</tbody></table>";
+  }
+  body.innerHTML = h;
+}
+
+/* ================= History (v1.0.0) ================= */
+async function refreshHistory(){
+  try{
+    const data = await api.history();
+    renderHistory(data.history || []);
+  }catch(e){ /* backend not up yet */ }
+}
+$("btn-history-refresh").addEventListener("click", refreshHistory);
+function deltaCell(d){
+  if (!d || !d.available) return '<span class="dim">first record</span>';
+  const parts = [];
+  if (d.added_files) parts.push('<span style="color:var(--green)">+' + d.added_files + " added</span>");
+  if (d.removed_files) parts.push('<span style="color:var(--red)">−' + d.removed_files + " removed</span>");
+  if (d.changed_files) parts.push(d.changed_files + " changed");
+  let t = parts.length ? parts.join(" · ") : '<span class="dim">no file changes</span>';
+  const counts = [];
+  if (d.groups_delta) counts.push("groups " + (d.groups_delta > 0 ? "+" : "") + d.groups_delta);
+  if (d.subtitle_delta) counts.push("subtitles " + (d.subtitle_delta > 0 ? "+" : "") + d.subtitle_delta);
+  if (d.health_delta) counts.push("health " + (d.health_delta > 0 ? "+" : "") + d.health_delta);
+  if (counts.length) t += '<div class="small dim">' + counts.join(" · ") + "</div>";
+  if ((d.root_warnings || []).length) t += d.root_warnings.map(w => '<div class="small" style="color:var(--amber2)">⚠ ' + esc(w) + "</div>").join("");
+  return t;
+}
+function renderHistory(list){
+  const body = $("history-body");
+  $("history-note").textContent = list.length ? list.length + " scan(s) on record (the last 50 are kept)" : "";
+  if (!list.length){ body.innerHTML = '<div class="empty">No scans recorded yet.</div>'; return; }
+  body.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>When</th><th>Trigger</th><th>Duration</th><th>Media</th><th>Dup groups</th><th>Reclaimable</th><th>Subtitles</th><th>Health</th><th>Change vs previous</th></tr></thead><tbody>' +
+    list.map(e => {
+      const s = e.summary || {};
+      return "<tr><td class='small'>" + esc((e.scanned_at || "").replace("T", " ").replace("Z", "")) + "</td>" +
+        '<td><span class="badge b-dim">' + esc(e.trigger || "manual") + "</span></td>" +
+        "<td>" + (e.duration_sec ? e.duration_sec.toFixed(1) + "s" : "—") + "</td>" +
+        "<td>" + (s.media_count ?? "—") + "</td><td>" + (s.duplicate_groups ?? "—") + "</td>" +
+        "<td>" + fmtBytes(s.duplicate_reclaimable_bytes || 0) + "</td>" +
+        "<td>" + (s.subtitle_findings ?? "—") + "</td><td>" + (s.health_findings ?? "—") + "</td>" +
+        "<td>" + deltaCell(e.delta) + "</td></tr>";
+    }).join("") + "</tbody></table></div>";
+}
+
 /* ================= Boot ================= */
 async function refreshAll(){
-  try{ await Promise.all([refreshLibrary(), refreshSubtitles(), refreshDuplicates(), refreshHealth(), refreshSettings(), refreshOrganizeManifests()]); }
+  try{ await Promise.all([refreshLibrary(), refreshSubtitles(), refreshDuplicates(), refreshHealth(), refreshSettings(), refreshOrganizeManifests(), refreshReport(), refreshHistory()]); }
   catch(e){ /* backend not up yet */ }
   refreshState();
 }

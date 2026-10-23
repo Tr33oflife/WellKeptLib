@@ -21,6 +21,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // Diagnostics is the JSON shape of GET /api/diagnostics.
@@ -40,6 +41,10 @@ type Diagnostics struct {
 	// paths or exclusion paths themselves.
 	RootsCount      int `json:"roots_count"`
 	ExclusionsCount int `json:"exclusions_count"`
+	// WantedLanguages (v0.9.0): the coverage wanted list in
+	// force — a preference, not a secret, and the first thing a
+	// "why is everything uncovered" report needs.
+	WantedLanguages []string `json:"wanted_languages"`
 	Tuning          struct {
 		Workers                   int     `json:"workers"`
 		SubtitleConfidence        float64 `json:"subtitle_confidence"`
@@ -50,6 +55,7 @@ type Diagnostics struct {
 		SubtitleSampleSec         int     `json:"subtitle_sample_sec"`
 		SubtitleExtractTimeoutSec int     `json:"subtitle_extract_timeout_sec"`
 		SubtitleMaxTracks         int     `json:"subtitle_max_tracks"`
+		EmbeddedAudit             bool    `json:"embedded_audit"`
 	} `json:"tuning"`
 	// Plex appears ONLY as configured + server name (the token
 	// secrecy rule above).
@@ -66,6 +72,21 @@ type Diagnostics struct {
 	// ConfigWarning mirrors StateInfo.ConfigWarning (v0.5.0):
 	// non-empty when config.json was corrupt at startup.
 	ConfigWarning string `json:"config_warning,omitempty"`
+	// v1.0.0 automation status — presence and outcomes only.
+	// The webhook URL is NEVER included (a Discord/ntfy URL
+	// embeds a credential); the schedule shows its shape, not
+	// its anchor internals.
+	ScheduleEnabled bool          `json:"schedule_enabled"`
+	ScheduleNextRun string        `json:"schedule_next_run,omitempty"`
+	WebhookEnabled  bool          `json:"webhook_enabled"`
+	WebhookFlavor   string        `json:"webhook_flavor,omitempty"`
+	WebhookLast     webhookStatus `json:"webhook_last"`
+	// OpenSubtitles (v1.0.0): presence only — the API key and
+	// login credentials follow the Plex token rule above.
+	OpenSubtitlesEnabled    bool `json:"opensubtitles_enabled"`
+	OpenSubtitlesConfigured bool `json:"opensubtitles_configured"`
+	OpenSubtitlesHasLogin   bool `json:"opensubtitles_has_login"`
+	HistoryRecords          int  `json:"history_records"`
 }
 
 // fileExistsOnDisk reports whether path names an existing
@@ -93,6 +114,7 @@ func (s *Service) Diagnostics() Diagnostics {
 		FFmpegExists:      fileExistsOnDisk(s.cfg.FFmpegPath),
 		RootsCount:        len(s.cfg.Roots),
 		ExclusionsCount:   len(s.cfg.Exclusions),
+		WantedLanguages:   append([]string{}, s.cfg.WantedLanguages...),
 		PlexConfigured:    s.plex.configured(),
 		PlexServerName:    s.plex.ServerName,
 		LastScanSummary:   s.currentSummaryLocked(),
@@ -109,6 +131,20 @@ func (s *Service) Diagnostics() Diagnostics {
 	d.Tuning.SubtitleSampleSec = s.cfg.SubtitleSampleSec
 	d.Tuning.SubtitleExtractTimeoutSec = s.cfg.SubtitleExtractTimeoutSec
 	d.Tuning.SubtitleMaxTracks = s.cfg.SubtitleMaxTracks
+	d.Tuning.EmbeddedAudit = s.cfg.EmbeddedAudit
+	// v1.0.0 automation status (see the struct comments).
+	d.ScheduleEnabled = s.cfg.ScheduleEnabled
+	if next, ok := s.scheduleNextRunLocked(time.Now()); ok {
+		d.ScheduleNextRun = next.UTC().Format(time.RFC3339)
+	}
+	d.WebhookEnabled = s.cfg.WebhookEnabled
+	d.WebhookFlavor = s.cfg.WebhookFlavor
+	d.WebhookLast = s.webhookLast
+	osView := osSecretsViewLocked(s)
+	d.OpenSubtitlesEnabled = osView.Enabled
+	d.OpenSubtitlesConfigured = osView.Configured
+	d.OpenSubtitlesHasLogin = osView.HasLogin
+	d.HistoryRecords = len(s.history)
 	// Count undo manifests by filename (the manifests themselves
 	// are organize_apply.go's business; a support snapshot only
 	// needs the count).

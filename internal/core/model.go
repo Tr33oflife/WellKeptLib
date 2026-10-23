@@ -37,6 +37,48 @@ type Config struct {
 	SubtitleSampleSec         int `json:"subtitle_sample_sec"`          // ffmpeg -t sample per subtitle track, default 120
 	SubtitleExtractTimeoutSec int `json:"subtitle_extract_timeout_sec"` // ffmpeg extraction timeout, default 45
 	SubtitleMaxTracks         int `json:"subtitle_max_tracks"`          // embedded-audit text-track cap per file, default 6
+	// EmbeddedAudit (v0.8.0): the master switch for the embedded-
+	// subtitle audit phase — the one knob the v0.5.0 tuning set was
+	// missing. Default TRUE (the historical behavior). When false,
+	// a scan creates no audit jobs and never invokes ffmpeg
+	// extraction: results publish external-subtitle findings only,
+	// and previously cached embedded findings are not republished.
+	EmbeddedAudit bool `json:"embedded_audit"` // embedded-subtitle audit on/off, default true
+	// WantedLanguages (v0.9.0): the subtitle languages the user
+	// wants every item to have — the coverage derivation's wanted
+	// set (coverage.go). Stored as entered (normalized to
+	// lowercase, deduplicated by language); comparisons always go
+	// through the ISO 639-1 canonical form, so "eng" and "en" are
+	// the same want. Default ["eng"]. A preference, NOT tuning:
+	// ResetTuning deliberately leaves it alone.
+	WantedLanguages []string `json:"wanted_languages"`
+	// v1.0.0 automation settings. These are PREFERENCES, not
+	// tuning: ResetTuning deliberately leaves all of them alone.
+	//
+	// Scheduled scans (scheduler.go): ScheduleEnabled is a bool
+	// whose default is FALSE, but it still needs the presence-
+	// aware load merge (v0.8.0 pattern) — a config written before
+	// v1.0.0 must not gain a schedule, and a saved value must be
+	// honored exactly. The schedule is EITHER an interval in
+	// hours (ScheduleIntervalHours > 0) or a daily local time
+	// (ScheduleDailyTime "HH:MM"); the interval wins when both
+	// are set. Scheduled scans run in-process while the app
+	// runs — no cron, no OS timer (FEATURE-PLAN §5).
+	ScheduleEnabled       bool   `json:"schedule_enabled"`
+	ScheduleIntervalHours int    `json:"schedule_interval_hours,omitempty"`
+	ScheduleDailyTime     string `json:"schedule_daily_time,omitempty"`
+	// Scan-finished webhook (webhook.go): WebhookEnabled follows
+	// the same bool merge rules. WebhookFlavor is "generic"
+	// (the default JSON payload), "discord", or "ntfy".
+	WebhookEnabled bool   `json:"webhook_enabled"`
+	WebhookURL     string `json:"webhook_url,omitempty"`
+	WebhookFlavor  string `json:"webhook_flavor,omitempty"`
+	// ScheduleLastRunUnix (v1.0.0): the scheduler's anchor — the
+	// unix time of its last action (fire OR recorded skip),
+	// persisted with the config so interval math survives
+	// restarts. Written by the scheduler itself; user edits to
+	// it are meaningless but harmless.
+	ScheduleLastRunUnix int64 `json:"schedule_last_run_unix,omitempty"`
 }
 
 // StreamInfo is the flattened per-stream view of an ffprobe stream that
@@ -98,6 +140,17 @@ type Item struct {
 	ProbeError      string   `json:"probe_error,omitempty"`
 	HasVideo        bool     `json:"has_video"`
 	SampleHash      string   `json:"sample_hash,omitempty"`
+	// Dev / Ino / Nlink (v1.0.0, FEATURE-PLAN §2): the file's
+	// storage identity, captured at WALK time from the walk's
+	// own os.FileInfo (no extra IO). Two items are the same
+	// physical file iff Dev and Ino are both non-zero and equal
+	// (hardlinks). Zero means "identity unknown on this
+	// platform/filesystem" — duplicates math then falls back to
+	// the pre-v1.0.0 per-file arithmetic and says so. Nlink is
+	// the link count at walk time (0 = unknown).
+	Dev             uint64   `json:"dev,omitempty"`
+	Ino             uint64   `json:"ino,omitempty"`
+	Nlink           uint64   `json:"nlink,omitempty"`
 	IsSample        bool     `json:"is_sample,omitempty"` // sample/trailer/extras pattern
 	Special         string   `json:"special,omitempty"`   // "multi-episode" | "split-file"
 	Excluded        bool     `json:"excluded,omitempty"`
@@ -122,7 +175,7 @@ type SubtitleFinding struct {
 // HealthFinding is one empty/corrupt finding with its probe evidence.
 type HealthFinding struct {
 	Path     string `json:"path"`
-	Type     string `json:"type"` // empty|tiny|probe-failure|no-video-stream|no-duration|suspect-truncated|incomplete|empty-folder|subtitle-empty|subtitle-unparseable|walk-warning
+	Type     string `json:"type"` // empty|tiny|probe-failure|no-video-stream|no-duration|suspect-truncated|incomplete|empty-folder|subtitle-empty|subtitle-unparseable|walk-warning|orphan-sidecar
 	Evidence string `json:"evidence"`
 	Size     int64  `json:"size,omitempty"`
 }
@@ -132,6 +185,15 @@ type DupCopy struct {
 	Item
 	ExactDuplicate bool `json:"exact_duplicate,omitempty"`
 	IsKeeper       bool `json:"is_keeper,omitempty"`
+	// HardlinkOfKeeper (v1.0.0): this copy is the SAME physical
+	// file as the group's keeper (same device+inode, both
+	// known) — deleting it frees zero bytes. Meaningful only
+	// when the group's HardlinkKnown is true.
+	HardlinkOfKeeper bool `json:"hardlink_of_keeper,omitempty"`
+	// IdentityKnown (v1.0.0): this copy's device+inode were
+	// captured (both non-zero). Copies without identity are
+	// counted as separate physical files (the honest fallback).
+	IdentityKnown bool `json:"identity_known,omitempty"`
 }
 
 // CrossLink points from one edition sub-group to another edition of the
@@ -145,22 +207,37 @@ type CrossLink struct {
 
 // DupGroup is one duplicate group (one edition of one identity).
 type DupGroup struct {
-	Key         string      `json:"key"`
-	BaseKey     string      `json:"base_key"`
-	Kind        string      `json:"kind"`
-	Title       string      `json:"title"`
-	Year        int         `json:"year,omitempty"`
-	Season      int         `json:"season,omitempty"`
-	Episodes    []int       `json:"episodes,omitempty"`
-	Edition     string      `json:"edition,omitempty"`
-	Status      string      `json:"status"` // confirmed | probable | demoted
-	Note        string      `json:"note,omitempty"`
-	Copies      []DupCopy   `json:"copies"`
-	WastedBytes int64       `json:"wasted_bytes"`
-	KeeperPath  string      `json:"keeper_path"`
-	KeeperWhy   string      `json:"keeper_why"`
-	HasExact    bool        `json:"has_exact,omitempty"`
-	CrossLinks  []CrossLink `json:"cross_links,omitempty"`
+	Key         string    `json:"key"`
+	BaseKey     string    `json:"base_key"`
+	Kind        string    `json:"kind"`
+	Title       string    `json:"title"`
+	Year        int       `json:"year,omitempty"`
+	Season      int       `json:"season,omitempty"`
+	Episodes    []int     `json:"episodes,omitempty"`
+	Edition     string    `json:"edition,omitempty"`
+	Status      string    `json:"status"` // confirmed | probable | demoted
+	Note        string    `json:"note,omitempty"`
+	Copies      []DupCopy `json:"copies"`
+	WastedBytes int64     `json:"wasted_bytes"`
+	// ReclaimableBytes (v1.0.0): what deleting every non-keeper
+	// copy would ACTUALLY free — each distinct physical file
+	// (device+inode) beyond the keeper's counts once, hardlinks
+	// of the keeper count zero. Equals WastedBytes whenever all
+	// copies are distinct physical files (the pre-v1.0.0 case,
+	// including unknown identity — the labelled fallback).
+	ReclaimableBytes int64 `json:"reclaimable_bytes"`
+	// PhysicalCopies / FileEntries (v1.0.0): distinct physical
+	// files vs directory entries in this group. HardlinkKnown
+	// is true only when EVERY copy's identity was captured;
+	// when false the reclaimable figure is the fallback
+	// arithmetic and must be labelled "at least / estimated".
+	PhysicalCopies int         `json:"physical_copies"`
+	FileEntries    int         `json:"file_entries"`
+	HardlinkKnown  bool        `json:"hardlink_known"`
+	KeeperPath     string      `json:"keeper_path"`
+	KeeperWhy      string      `json:"keeper_why"`
+	HasExact       bool        `json:"has_exact,omitempty"`
+	CrossLinks     []CrossLink `json:"cross_links,omitempty"`
 }
 
 // SeriesAgg is the per-series aggregation for the Library view.
@@ -180,11 +257,30 @@ type ScanSummary struct {
 	TotalBytes        int64 `json:"total_bytes"`
 	DuplicateGroups   int   `json:"duplicate_groups"`
 	DuplicateWasted   int64 `json:"duplicate_wasted_bytes"`
-	SubtitleFindings  int   `json:"subtitle_findings"`
-	HealthFindings    int   `json:"health_findings"`
-	ExcludedDupCopies int   `json:"excluded_duplicate_copies"`
-	ExclusionCount    int   `json:"exclusion_count"` // configured exclusions (Maintainerr pattern)
-	ScannedRootCount  int   `json:"scanned_roots"`
+	// DuplicateReclaimable (v1.0.0): the summary-level honest
+	// figure — the sum of every group's ReclaimableBytes (see
+	// DupGroup). DuplicateWasted stays the apparent figure
+	// (total minus one copy per group) so older consumers keep
+	// their meaning; the two are equal unless hardlinks exist.
+	DuplicateReclaimable int64 `json:"duplicate_reclaimable_bytes"`
+	SubtitleFindings     int   `json:"subtitle_findings"`
+	HealthFindings       int   `json:"health_findings"`
+	ExcludedDupCopies    int   `json:"excluded_duplicate_copies"`
+	ExclusionCount       int   `json:"exclusion_count"` // configured exclusions (Maintainerr pattern)
+	ScannedRootCount     int   `json:"scanned_roots"`
+	// v0.9.0 derivations — computed in currentSummaryLocked from
+	// the same results, so every surface (state, diagnostics,
+	// exports) agrees. Gaps: series+season rows with missing
+	// episode numbers, and the total number of missing episodes
+	// across them (see gaps.go). Coverage: per-item
+	// wanted-language classes (see coverage.go); items the user
+	// dismissed from coverage are excluded from all four counts.
+	GapCount             int `json:"gap_count"`
+	GapEpisodes          int `json:"gap_episodes"`
+	CoverageCovered      int `json:"coverage_covered"`
+	CoverageNoWanted     int `json:"coverage_no_wanted"`
+	CoverageNoSubtitles  int `json:"coverage_no_subtitles"`
+	CoverageUnverifiable int `json:"coverage_unverifiable"`
 }
 
 // ScanResults is everything one scan produced (persisted to scan.json).
@@ -196,6 +292,13 @@ type ScanResults struct {
 	ScannedAt    string            `json:"scanned_at,omitempty"`
 	FFprobeFound string            `json:"ffprobe_found,omitempty"`
 	FFmpegFound  string            `json:"ffmpeg_found,omitempty"`
+	// SubtitleFilePaths (v0.9.0) persists the scanned external
+	// subtitle file paths so the coverage derivation (read-time,
+	// over items + the probe cache) can associate sidecars with
+	// their items after a restart. Additive: scan.json files
+	// written by older builds simply carry no sidecar evidence
+	// until the next scan.
+	SubtitleFilePaths []string `json:"subtitle_file_paths,omitempty"`
 }
 
 // ScanState is the live progress view served by /api/state.
@@ -216,7 +319,15 @@ type ScanState struct {
 	// by design: the persisted results JSON does not carry it, and
 	// a cancelled audit leaves it set so the UI can keep warning
 	// that embedded findings are missing from the shown results.
-	AuditPending bool   `json:"audit_pending"`
+	AuditPending bool `json:"audit_pending"`
+	// AuditSkipped (v0.8.0) is true when the most recent scan ran
+	// with the embedded-subtitle audit OFF in Settings: no audit
+	// phase ran at all, AuditPending is false, and the published
+	// subtitle findings are external-only BY CHOICE — distinct
+	// from both "audit still running" (AuditPending) and "audit
+	// done" (both false). Set by every result assembly, so it
+	// always describes the scan that produced the current results.
+	AuditSkipped bool   `json:"audit_skipped"`
 	StartedAt    string `json:"started_at,omitempty"`
 	LastError    string `json:"last_error,omitempty"`
 	// RootProblems lists every root rejected by validation at scan
@@ -233,6 +344,14 @@ type CacheEntry struct {
 	Size      int64        `json:"size"`
 	MtimeNano int64        `json:"mtime_nano"`
 	Probe     *ProbeResult `json:"probe"`
+	// Dev / Ino / Nlink (v1.0.0): the file identity captured at
+	// walk time, persisted additively with the probe (older
+	// cache files simply carry zeros = unknown until the entry
+	// is refreshed). The scan's authoritative identity is the
+	// fresh walk's, never the cache's — see scanner.go.
+	Dev   uint64 `json:"dev,omitempty"`
+	Ino   uint64 `json:"ino,omitempty"`
+	Nlink uint64 `json:"nlink,omitempty"`
 	// EmbeddedFindings + AuditDone (v0.3.4) cache the embedded-
 	// subtitle audit alongside the probe, under the SAME
 	// fingerprint: extracting subtitle text with ffmpeg is the
