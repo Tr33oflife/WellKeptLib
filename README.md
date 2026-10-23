@@ -17,6 +17,35 @@ double-click `.exe` on Windows.
 - **Dependencies:** Go standard library only (no third-party
   packages); ffmpeg/ffprobe at runtime for media probing
 
+## Screenshots
+
+Taken from a running 1.1.1 instance over a small synthetic
+demo library (the same generated fixture library the tests
+use — no real collection is shown).
+
+**Library — inventory by size, per-series totals:**
+![Library tab](docs/screenshots/01-library.png)
+
+**Duplicates — identity groups with keeper ranking and
+reclaimable-vs-apparent space:**
+![Duplicates tab](docs/screenshots/02-duplicates.png)
+
+**Subtitles — declared vs. detected language, with the
+evidence lines, plus coverage:**
+![Subtitles tab](docs/screenshots/03-subtitles.png)
+
+**Health — empty, corrupt, and incomplete files, each with
+its probe evidence:**
+![Health tab](docs/screenshots/04-health.png)
+
+**Report — the library report card (also downloadable as
+CSV / standalone HTML):**
+![Report tab](docs/screenshots/05-report.png)
+
+**Organize — the hardlink library plan preview: links to
+create, collisions, and skips, before anything is written:**
+![Organize link plan](docs/screenshots/06-organize-link-plan.png)
+
 ## What it does
 
 - **Duplicates, by identity — not by bytes.** Finds the same
