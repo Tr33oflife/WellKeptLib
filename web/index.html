@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WellKeptLib</title>
+<style>
+  /* ==== Design system v2 (v0.4.0 UI sweep): layered dark surfaces, amber
+         accent, elevation + spacing scales, focus rings. CSS-only refresh —
+         every class/id/hook the script relies on is preserved verbatim. ==== */
+  :root{
+    --bg:#0c0e13; --bg2:#11141c; --panel:#161a24; --panel2:#1c212e; --line:#262d3d;
+    --text:#e8ebf2; --dim:#9aa4b8; --faint:#626d82;
+    --amber:#f2b138; --amber2:#ffcf6b; --red:#ff6b6b; --green:#4ade80; --blue:#5eb1ff; --purple:#b18cff;
+    --radius:12px;
+    /* v2 tokens */
+    --line-soft:#1e2534; --inset:#0d1017;
+    --radius-sm:8px; --radius-md:12px; --radius-lg:16px; --radius-pill:99px;
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:22px; --sp-6:32px;
+    --shadow-sm:0 2px 8px rgba(0,0,0,.28);
+    --shadow-md:0 8px 24px rgba(0,0,0,.32);
+    --shadow-lg:0 18px 44px rgba(0,0,0,.42);
+    --ring:0 0 0 3px rgba(242,177,56,.28);
+    --accent-grad:linear-gradient(180deg,var(--amber2),var(--amber));
+    --panel-grad:linear-gradient(180deg,#181d29,var(--panel));
+    --ease:cubic-bezier(.22,.8,.32,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:
+         radial-gradient(1200px 600px at 80% -10%, #1b2233 0%, rgba(27,34,51,0) 55%),
+         radial-gradient(900px 520px at -10% 0%, #131c30 0%, rgba(19,28,48,0) 50%),
+         var(--bg);
+       color:var(--text);
+       font:14px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;min-height:100vh}
+  ::selection{background:rgba(242,177,56,.38);color:#fff}
+  /* Thin dark scrollbars (page + every scroll container) */
+  *{scrollbar-width:thin;scrollbar-color:#2c3549 transparent}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#2c3549;border-radius:99px;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:#3a4859;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+  h1{font-size:22px;margin:0;letter-spacing:.2px;font-weight:750}
+  h2{font-size:16px;margin:0 0 10px;font-weight:700;letter-spacing:.1px}
+  a{color:var(--amber2)}
+  :focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:4px}
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:linear-gradient(180deg,#212839,var(--panel2));color:var(--text);
+         padding:6px 13px;border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);
+         transition:border-color .15s var(--ease),color .15s var(--ease),background .15s var(--ease),box-shadow .15s var(--ease),transform .08s var(--ease)}
+  button:hover{border-color:var(--amber);color:var(--amber2)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;transform:none}
+  button:disabled:hover{border-color:var(--line);color:var(--text)}
+  button.primary{background:var(--accent-grad);color:#1a1405;border:none;font-weight:700;box-shadow:0 4px 16px rgba(242,177,56,.28)}
+  button.primary:hover{filter:brightness(1.07);color:#1a1405}
+  button.primary:disabled:hover{filter:none}
+  a.btn-primary{display:inline-block;text-decoration:none;background:var(--accent-grad);color:#1a1405;font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);font-size:15px;box-shadow:0 4px 16px rgba(242,177,56,.28);transition:filter .15s var(--ease)}
+  a.btn-primary:hover{filter:brightness(1.07);color:#1a1405}
+  button.danger{border-color:#4a2b30;background:linear-gradient(180deg,#2a1a1e,#221419);color:#ffb3b3}
+  button.danger:hover{border-color:var(--red);color:var(--red)}
+  button.small{padding:3px 10px;font-size:12px;border-radius:7px;box-shadow:none}
+  input,textarea,select{font:inherit;background:var(--inset);border:1px solid var(--line);color:var(--text);
+         border-radius:var(--radius-sm);padding:7px 10px;min-height:34px;
+         transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
+  input[type="checkbox"],input[type="radio"]{min-height:0;accent-color:var(--amber);width:15px;height:15px}
+  textarea{min-height:0}
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--amber);box-shadow:var(--ring)}
+  label{display:block;font-size:11.5px;color:var(--dim);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.7px;font-weight:600}
+  .wrap{max-width:1320px;margin:0 auto;padding:18px 20px 60px}
+  /* Header / scan bar (always visible): sticky + backdrop blur on wide
+     screens, resting glow in place of a scroll-state detector. */
+  header{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
+         border-radius:var(--radius-lg);padding:16px 18px;box-shadow:var(--shadow-lg)}
+  @media (min-width:901px){
+    header{position:sticky;top:12px;z-index:60;
+           background:linear-gradient(180deg,rgba(30,36,50,.88),rgba(22,26,36,.88));
+           backdrop-filter:blur(14px) saturate(1.35);-webkit-backdrop-filter:blur(14px) saturate(1.35);
+           box-shadow:var(--shadow-lg),0 0 0 1px rgba(242,177,56,.07),0 10px 34px rgba(0,0,0,.5)}
+  }
+  .brand{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .brand .sub{color:var(--dim);font-size:12.5px}
+  .logo{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;
+        background:var(--accent-grad);color:#1a1405;font-size:19px;border-radius:10px;
+        box-shadow:0 4px 14px rgba(242,177,56,.35)}
+  .scanbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
+  .scanbar .grow{flex:1;min-width:260px}
+  .scanbar textarea{width:100%;height:38px;resize:vertical}
+  .scanbar button{padding:9px 15px}
+  .progress{height:10px;background:var(--inset);border-radius:var(--radius-pill);overflow:hidden;margin-top:14px;
+            border:1px solid var(--line);box-shadow:inset 0 1px 3px rgba(0,0,0,.55)}
+  .progress > div{height:100%;width:0;border-radius:var(--radius-pill);
+                  background:linear-gradient(90deg,var(--amber),var(--amber2));
+                  box-shadow:0 0 12px rgba(242,177,56,.45),inset 0 1px 0 rgba(255,255,255,.35);
+                  transition:width .45s var(--ease)}
+  /* Indeterminate state: the render adds .indet only while a scan runs
+     with no known total yet (guard in refreshState) — the fill slides
+     instead of sitting at 0%. */
+  .progress.indet > div{width:38% !important;animation:prog-indet 1.15s ease-in-out infinite alternate}
+  @keyframes prog-indet{from{transform:translateX(-115%)}to{transform:translateX(285%)}}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .chip{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0)),#10141d;
+        border:1px solid var(--line);border-radius:var(--radius-pill);padding:3px 12px;font-size:12.5px;color:var(--dim);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+  .chip b{color:var(--text);font-weight:650}
+  .chip.warn{border-color:#5b2b2b;background:linear-gradient(180deg,rgba(255,107,107,.09),rgba(255,107,107,.03)),#171017}
+  .chip.warn b{color:var(--red)}
+  .chip.good{border-color:#1f4d33;background:linear-gradient(180deg,rgba(74,222,128,.09),rgba(74,222,128,.03)),#0f1a13}
+  .chip.good b{color:var(--green)}
+  .chip.info{border-color:#23405e;background:linear-gradient(180deg,rgba(94,177,255,.09),rgba(94,177,255,.03)),#101820}
+  .chip.info b{color:var(--blue)}
+  /* Tabs: segmented pill bar */
+  nav.tabs{display:flex;gap:2px;margin:18px 0 14px;flex-wrap:wrap;width:fit-content;max-width:100%;
+           background:var(--bg2);border:1px solid var(--line);border-radius:var(--radius-pill);
+           padding:4px;box-shadow:var(--shadow-sm)}
+  nav.tabs button{border-color:transparent;background:transparent;box-shadow:none;border-radius:var(--radius-pill);
+                  padding:7px 16px;font-weight:600;color:var(--dim)}
+  nav.tabs button:hover{color:var(--text);background:rgba(255,255,255,.05);border-color:transparent}
+  nav.tabs button.active{background:var(--accent-grad);border-color:transparent;color:#1a1405;
+                         box-shadow:0 3px 12px rgba(242,177,56,.35)}
+  nav.tabs button.active:hover{color:#1a1405}
+  nav.tabs button .n{opacity:.75;font-weight:400}
+  section.panel{display:none;background:var(--panel-grad);border:1px solid var(--line);border-radius:var(--radius-lg);
+                padding:18px 20px;box-shadow:var(--shadow-md)}
+  section.panel.active{display:block}
+  /* Tables */
+  table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+  th{ text-align:left;color:var(--faint);font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;font-weight:650;
+      padding:8px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none;white-space:nowrap;
+      position:sticky;top:0;background:var(--panel2);z-index:3;box-shadow:0 1px 0 var(--line)}
+  td{padding:7px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  tbody tr{transition:background .12s var(--ease)}
+  tbody tr:nth-child(even){background:rgba(255,255,255,.016)}
+  tr:hover td{background:#1a2030}
+  /* Numeric columns right-aligned per table (CSS-only; DOM untouched) */
+  #lib-table td:nth-child(4),#lib-table td:nth-child(5),
+  #lib-table th:nth-child(4),#lib-table th:nth-child(5),
+  #series-block td:nth-child(2),#series-block td:nth-child(3),#series-block td:nth-child(4),#series-block td:nth-child(5),
+  #series-block th:nth-child(2),#series-block th:nth-child(3),#series-block th:nth-child(4),#series-block th:nth-child(5),
+  #sub-table td:nth-child(3),#sub-table th:nth-child(3),
+  #health-table td:nth-child(3),#health-table th:nth-child(3),
+  #dup-list td:nth-child(2),#dup-list td:nth-child(5),#dup-list td:nth-child(6),
+  #dup-list th:nth-child(2),#dup-list th:nth-child(5),#dup-list th:nth-child(6),
+  #org-manifests td:nth-child(3),#org-manifests th:nth-child(3){text-align:right}
+  .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all}
+  .dim{color:var(--dim)} .small{font-size:12px}
+  .badge{display:inline-block;padding:1px 9px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;
+         letter-spacing:.2px;border:1px solid var(--line);white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+  .b-red{color:var(--red);border-color:#5b2b2b;background:#2a1518}
+  .b-amber{color:var(--amber2);border-color:#5b4a1f;background:#2a2110}
+  .b-green{color:var(--green);border-color:#1f4d33;background:#0f2418}
+  .b-blue{color:var(--blue);border-color:#23405e;background:#101c2a}
+  .b-purple{color:var(--purple);border-color:#3d2c5e;background:#1b1429}
+  .b-dim{color:var(--dim)}
+  .sample{color:var(--faint);font-style:italic;font-size:12.5px}
+  .group{border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;
+         background:linear-gradient(180deg,#1e2432,var(--panel2));box-shadow:var(--shadow-sm)}
+  .group h3{margin:0 0 4px;font-size:14.5px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+  @media (max-width:900px){.grid2{grid-template-columns:1fr}}
+  .empty{color:var(--faint);padding:24px 22px;text-align:center;font-size:14px;
+         border:1px dashed var(--line);border-radius:var(--radius-md);background:rgba(255,255,255,.012)}
+  .excluded-row td{opacity:.55}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar select{padding:5px 8px;min-height:30px}
+  .toolbar a{border:1px solid var(--line);border-radius:var(--radius-sm);padding:5px 11px;text-decoration:none;
+             background:var(--panel2);font-size:13px;transition:border-color .15s var(--ease),color .15s var(--ease)}
+  .toolbar a:hover{border-color:var(--amber)}
+  /* JS-rendered notice / confirm / path boxes (inline-styled in markup):
+     add elevation only — their inline borders/backgrounds stay in charge. */
+  #import-panel,#sub-audit-notice,#dup-pathbox,#health-pathbox{box-shadow:var(--shadow-md)}
+  #dup-confirm,#health-confirm{box-shadow:0 10px 30px rgba(255,107,107,.14),var(--shadow-md)}
+  details summary:hover{color:var(--amber2)}
+  /* ==== Duplicates overhaul (v0.6.0) ================================
+     Summary strip, filter/sort controls, collapsible groups,
+     comparison markers, path truncation, batch bar. All classes;
+     the only inline styles left in this panel are the pre-existing
+     display toggles. */
+  #dup-summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  #dup-search{flex:1 1 170px;min-width:150px;min-height:30px;padding:5px 8px}
+  .dup-gtitle{cursor:pointer}
+  .dup-gtitle:hover{color:var(--amber2)}
+  .dup-caret{display:inline-block;color:var(--faint);font-size:12px;transition:transform .15s var(--ease)}
+  .group.open .dup-caret{transform:rotate(90deg)}
+  .dup-gmeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:2px}
+  .dup-gmeta .grow{flex:1;min-width:180px}
+  .dup-body{display:none;margin-top:10px}
+  .group.open .dup-body{display:block}
+  .dup-tablewrap{overflow-x:auto}
+  .dup-keeper td{background:rgba(74,222,128,.07)}
+  .keeper-chip{display:inline-block;padding:1px 8px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;
+               color:var(--green);border:1px solid #1f4d33;background:#0f2418;white-space:nowrap}
+  .dup-best{font-weight:700}
+  .dup-best::after{content:" ▲";color:var(--amber);font-size:10px}
+  .dup-delta{color:var(--faint);font-size:12px;white-space:nowrap}
+  td.dup-pathcell{max-width:320px}
+  .dup-pathtext{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:36vw}
+  #dup-batchbar{position:sticky;bottom:10px;z-index:5;gap:10px;align-items:center;flex-wrap:wrap;
+                border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--panel2);
+                box-shadow:var(--shadow-md);margin-top:12px}
+  #dup-batch-info{flex:1;min-width:160px}
+  /* backnav hint toast (v0.6.1): the "press back again to exit"
+     prompt shown by the backnav snippet near the end of the Tabs
+     script section. Fixed, bottom-centre, inert until .show. */
+  #backnav-toast{position:fixed;left:50%;bottom:26px;z-index:60;pointer-events:none;
+                 transform:translateX(-50%) translateY(10px);opacity:0;
+                 background:var(--panel2);color:var(--text);border:1px solid var(--line);
+                 border-radius:var(--radius-pill);padding:9px 20px;font-size:13.5px;font-weight:600;
+                 box-shadow:var(--shadow-lg);transition:opacity .18s var(--ease),transform .18s var(--ease)}
+  #backnav-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* Narrow screens: header un-sticks, everything stacks, no page-level
+     horizontal scroll (tables keep scrolling inside their containers). */
+  @media (max-width:900px){
+    .wrap{padding:14px 12px 48px}
+    h1{font-size:19px}
+    nav.tabs{width:100%}
+    .scanbar .grow{min-width:min(240px,100%)}
+    section.panel{padding:14px 14px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{transition:none !important;animation:none !important}
+  }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= Header: brand + always-visible scan controls ================= -->
+  <header>
+    <div class="brand">
+      <span class="logo">▣</span>
+      <h1>WellKeptLib</h1>
+      <span class="sub">file-level scanner · organize with preview + undo · v<span id="ver">…</span></span>
+      <span class="sub" id="toolinfo"></span>
+    </div>
+    <div class="scanbar">
+      <div class="grow">
+        <label for="roots" style="margin-top:0">Library roots (one per line)</label>
+        <textarea id="roots" placeholder="One folder per line — e.g. D:\Movies&#10;or /home/you/media/TV"></textarea>
+      </div>
+      <button class="primary" id="btn-scan">▶ Start scan</button>
+      <button class="danger" id="btn-cancel">■ Cancel</button>
+      <button id="btn-import" title="Connect Plex in Settings first">⇓ Import roots from Plex</button>
+    </div>
+    <!-- Plex import panel (v0.2.0): sections fetched live, locations
+         shown mapped + validated; checking boxes only fills the roots
+         box — nothing scans until Start scan is pressed. -->
+    <div id="import-panel" style="display:none;margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#0d1017"></div>
+    <div class="progress"><div id="progbar"></div></div>
+    <div class="chips" id="chips"><span class="chip">No scan yet</span></div>
+  </header>
+
+  <!-- ================= Tabs ================= -->
+  <nav class="tabs" id="tabs">
+    <button data-tab="library" class="active">Library</button>
+    <button data-tab="subtitles">Subtitles <span class="n" id="n-sub"></span></button>
+    <button data-tab="duplicates">Duplicates <span class="n" id="n-dup"></span></button>
+    <button data-tab="health">Health <span class="n" id="n-health"></span></button>
+    <button data-tab="organize">Organize</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <!-- ================= Library ================= -->
+  <section class="panel active" id="panel-library">
+    <div class="toolbar">
+      <h2 style="margin:0">Inventory</h2>
+      <span class="dim small">Sort:</span>
+      <select id="lib-sort">
+        <option value="size">Size</option><option value="title">Title</option>
+        <option value="year">Year</option><option value="duration">Duration</option>
+      </select>
+      <select id="lib-order"><option value="desc">Descending</option><option value="asc">Ascending</option></select>
+      <button class="small" id="btn-lib-refresh">Refresh</button>
+      <span style="flex:1"></span>
+      <a href="api/export.json" id="link-export-json">Export JSON</a>
+      <a href="api/export.csv" id="link-export-csv">Export CSV</a>
+    </div>
+    <div id="series-block"></div>
+    <div style="overflow-x:auto"><table id="lib-table">
+      <thead><tr><th>Title</th><th>Type</th><th>Year / S·E</th><th>Size</th><th>Duration</th><th>Res</th><th>Codec</th><th>Path</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="lib-empty">No items yet — add a root above and start a scan.</div>
+  </section>
+
+  <!-- ================= Subtitles ================= -->
+  <section class="panel" id="panel-subtitles">
+    <h2>Subtitle audit — declared vs. detected language</h2>
+    <p class="dim small" style="margin-top:0">Language is detected from the subtitle <i>text</i>, offline. “Exclude” suppresses a path for the subtitles check only (persistent, editable in Settings).</p>
+    <!-- v0.3.4: shown while a scan's embedded-subtitle audit is
+         still running behind the already-published results
+         (state.audit_pending), so external-only findings are
+         never mistaken for the complete audit. -->
+    <div id="sub-audit-notice" style="display:none;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2);margin-bottom:12px">Embedded subtitle audit still running — findings below are external subtitles only for now.</div>
+    <div style="overflow-x:auto"><table id="sub-table">
+      <thead><tr><th>Status</th><th>Declared → Detected</th><th>Conf.</th><th>File</th><th>Evidence (sample lines)</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="sub-empty">No subtitle findings.</div>
+  </section>
+
+  <!-- ================= Duplicates ================= -->
+  <section class="panel" id="panel-duplicates">
+    <h2>Duplicate groups — same title/episode, any codec or size</h2>
+    <p class="dim small" style="margin-top:0">Editions are never merged; other editions appear as cross-links. Excluding a copy removes it from grouping.</p>
+    <!-- Summary strip (v0.6.0): headline counts over ALL fetched
+         groups (not the filtered view); hidden when there are none. -->
+    <div id="dup-summary" style="display:none"></div>
+    <!-- Rescan (v0.3.7): the tab's own entry point into the SAME
+         scan the header's Start scan runs (shared handler, same
+         roots, same validation, same no-roots guidance) — the
+         groups below are only ever as fresh as the last scan,
+         and changed files on disk otherwise left the tab
+         silently stale. The button mirrors the scan state
+         (disabled while running, live phase beside it) and the
+         groups refresh themselves when new results land. -->
+    <div class="toolbar">
+      <button class="small" id="btn-dup-rescan">↻ Rescan</button>
+      <span class="small dim" id="dup-scan-status"></span>
+    </div>
+    <!-- Controls (v0.6.0): client-side search / filter / sort over
+         the fetched groups — no refetch, so the poller's mid-scan
+         refresh keeps the user's view settings. -->
+    <div class="toolbar" style="margin-bottom:6px">
+      <input id="dup-search" type="search" placeholder="Search title or path…">
+      <select id="dup-status-filter">
+        <option value="all">All statuses</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="probable">Probable</option>
+        <option value="demoted">Demoted</option>
+        <option value="exact">Has exact duplicates</option>
+      </select>
+      <select id="dup-kind-filter">
+        <option value="all">Movies + episodes</option>
+        <option value="movie">Movies</option>
+        <option value="episode">Episodes</option>
+      </select>
+      <select id="dup-sort">
+        <option value="waste">Sort: biggest waste</option>
+        <option value="copies">Sort: most copies</option>
+        <option value="largest">Sort: largest single copy</option>
+        <option value="title">Sort: title A–Z</option>
+      </select>
+      <button class="small" id="dup-expand-all">Expand all</button>
+      <button class="small" id="dup-collapse-all">Collapse all</button>
+    </div>
+    <div class="small dim" id="dup-showing" style="margin:0 0 8px"></div>
+    <!-- Per-copy actions (v0.3.6, the Health tab's pair): the
+         note line reports outcomes, the confirm panel is the
+         delete guard's UI half (full path + size + group +
+         copies remaining + keeper warning — never a browser
+         confirm()), and the path box is what "Open location"
+         shows on a headless host. The server refuses to delete
+         a group's last remaining copy. -->
+    <div id="dup-note" class="small" style="margin:0 0 8px"></div>
+    <div id="dup-confirm" style="display:none;border:1px solid var(--red);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:12px"></div>
+    <div id="dup-pathbox" style="display:none;border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--panel2);margin-bottom:12px">
+      <span class="small dim">File location:</span> <span class="mono small" id="dup-path-text"></span>
+      <button class="small" id="btn-dup-copy" style="margin-left:8px">Copy path</button>
+      <button class="small" id="btn-dup-pathclose" style="margin-left:4px">Close</button>
+    </div>
+    <div id="dup-list"></div>
+    <div class="empty" id="dup-empty">No duplicate groups.</div>
+    <!-- Batch bar (v0.6.0): sticks to the bottom of the viewport
+         while the panel is on screen; hidden until at least one
+         copy is ticked. Delete routes through the same confirm
+         panel + per-file endpoint as single deletes. -->
+    <div id="dup-batchbar" style="display:none">
+      <span class="small" id="dup-batch-info"></span>
+      <button class="small danger" id="btn-dup-batch-delete">Delete selected</button>
+      <button class="small" id="btn-dup-batch-clear">Clear</button>
+    </div>
+  </section>
+
+  <!-- ================= Health ================= -->
+  <section class="panel" id="panel-health">
+    <h2>Health — empty &amp; corrupt files (fast probe)</h2>
+    <!-- Plex cross-check (v0.2.0): ask Plex what it thinks exists and
+         stat every file on THIS machine. Needs Plex configured in
+         Settings; the disk-based checks below work without it. -->
+    <div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:16px">
+      <h2 style="margin-bottom:4px">Plex cross-check</h2>
+      <p class="dim small" style="margin:0 0 10px">Fetch every file path Plex knows about and check each one exists on disk here (path mappings from Settings applied). Catches Plex entries whose files were moved or deleted outside Plex.</p>
+      <button id="btn-missing" title="Connect Plex in Settings first">Check for Plex items missing on disk</button>
+      <span class="dim small" id="missing-status" style="margin-left:10px"></span>
+      <div id="missing-result" style="margin-top:10px"></div>
+    </div>
+    <!-- Per-finding actions (Open location / Delete): the note
+         line reports outcomes, the confirm panel is the delete
+         guard's UI half (full path + size + reason, confirm
+         button labelled with the file name — never a browser
+         confirm()), and the path box is what "Open location"
+         shows on a headless host, where no file manager exists
+         to open: the path itself, with a copy button. -->
+    <div id="health-note" class="small" style="margin:0 0 8px"></div>
+    <div id="health-confirm" style="display:none;border:1px solid var(--red);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:12px"></div>
+    <div id="health-pathbox" style="display:none;border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--panel2);margin-bottom:12px">
+      <span class="small dim">File location:</span> <span class="mono small" id="health-path-text"></span>
+      <button class="small" id="btn-health-copy" style="margin-left:8px">Copy path</button>
+      <button class="small" id="btn-health-pathclose" style="margin-left:4px">Close</button>
+    </div>
+    <div style="overflow-x:auto"><table id="health-table">
+      <thead><tr><th>Type</th><th>File / Folder</th><th>Size</th><th>Evidence</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="health-empty">No health findings.</div>
+  </section>
+
+  <!-- ================= Organize (v0.3.0) =================
+       The app's ONLY file-moving feature. Flow: pick a folder,
+       preview the full Jellyfin plan, then Apply (guarded by an
+       on-disk undo manifest) or walk away — a preview moves nothing. -->
+  <section class="panel" id="panel-organize">
+    <h2>Organize into Jellyfin folders</h2>
+    <p class="dim small" style="margin-top:0;max-width:840px">This is the one part of the app that changes files on disk — always from a preview, always undoable. <b>Preview first — nothing moves until you press Apply. Every organize can be undone.</b></p>
+    <p class="dim small" style="max-width:840px">Movies become <span class="mono">Title (Year)/Title (Year).ext</span>; episodes become <span class="mono">Series/Season 01/Series - S01E01 - Episode Title.ext</span> (Season 00 for specials, S01E01-E02 for multi-episode files). Subtitles, .nfo files and folder artwork travel with their video. Anything the app can't identify stays exactly where it is and is listed under the plan; name collisions are flagged and never overwritten. Scanning stays read-only — only this tab moves files, and only inside the folder you pick.</p>
+    <div class="toolbar" style="align-items:flex-end">
+      <div style="flex:1;min-width:260px">
+        <label for="org-root" style="margin-top:0">Folder to organize</label>
+        <input id="org-root" style="width:100%" placeholder="e.g. D:\Media\Downloads or /home/you/media/downloads">
+      </div>
+      <div>
+        <label for="org-root-pick" style="margin-top:0">…or pick a scan root</label>
+        <select id="org-root-pick"><option value="">Use a scan root…</option></select>
+      </div>
+      <button class="primary" id="btn-org-preview">Preview plan</button>
+    </div>
+    <div id="org-plan"></div>
+    <h2 style="margin-top:28px">Past organizes</h2>
+    <p class="dim small" style="margin-top:0;max-width:840px">Undo records (manifests) are kept in the app's data folder and survive restarts. Undo restores the exact original layout and never overwrites a file that has since appeared at an original location.</p>
+    <div id="org-manifests"></div>
+    <div class="empty" id="org-manifests-empty">No organizes yet.</div>
+  </section>
+
+  <!-- ================= Settings ================= -->
+  <section class="panel" id="panel-settings">
+    <div class="grid2">
+      <div>
+        <h2>Scanner settings</h2>
+        <label>ffprobe path</label><input id="cfg-ffprobe" style="width:100%">
+        <label>ffmpeg path</label><input id="cfg-ffmpeg" style="width:100%">
+        <label>Subtitle confidence threshold (0–1)</label><input id="cfg-subconf" type="number" step="0.05" min="0" max="1" style="width:120px">
+        <label>Duplicate duration tolerance %</label><input id="cfg-durpct" type="number" step="0.5" min="0" style="width:120px">
+        <label>Duplicate duration tolerance seconds</label><input id="cfg-dursec" type="number" step="1" min="0" style="width:120px">
+        <label>Tiny-file floor (bytes)</label><input id="cfg-floor" type="number" step="1024" min="0" style="width:160px">
+        <label>Probe workers</label><input id="cfg-workers" type="number" min="1" max="16" style="width:90px">
+        <label>Probe timeout (seconds)</label><input id="cfg-probe-timeout" type="number" min="5" max="600" style="width:90px">
+        <label>Subtitle sample length (seconds)</label><input id="cfg-sub-sample" type="number" min="10" max="900" style="width:90px">
+        <label>Subtitle extraction timeout (seconds)</label><input id="cfg-sub-timeout" type="number" min="5" max="600" style="width:90px">
+        <label>Max subtitle tracks sampled per file</label><input id="cfg-sub-tracks" type="number" min="1" max="20" style="width:90px">
+        <div style="margin-top:14px"><button class="primary" id="btn-cfg-save">Save settings</button>
+        <button id="btn-cfg-reset-tuning">Reset tuning to defaults</button>
+        <button id="btn-diagnostics">Download diagnostics</button>
+        <span class="dim small" id="cfg-saved"></span></div>
+        <div class="small" id="cfg-warning" style="display:none;color:var(--amber2);margin-top:10px"></div>
+      </div>
+      <div>
+        <h2>Exclusions (persistent)</h2>
+        <p class="dim small" style="margin-top:0">Excluded paths are suppressed from the chosen check but still appear in the Library, marked excluded. Add one manually:</p>
+        <label>Path (file or folder)</label><input id="ex-path" style="width:100%">
+        <label>Scope</label>
+        <select id="ex-scope">
+          <option value="all">all checks</option><option value="subtitles">subtitles</option>
+          <option value="duplicates">duplicates</option><option value="health">health</option>
+        </select>
+        <button class="small" id="btn-ex-add" style="margin-left:8px">Add exclusion</button>
+        <table id="ex-table" style="margin-top:12px"><thead><tr><th>Path</th><th>Scope</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="empty" id="ex-empty">No exclusions.</div>
+      </div>
+    </div>
+
+    <!-- Plex (optional) — v0.2.0 library import; v0.3.1 made the
+         plex.tv PIN sign-in (the approval-link flow) the primary
+         connection method. The manual token field is a password
+         input and is never re-displayed: the backend stores the
+         connected server's token in plex.json and no API response
+         ever returns any token. -->
+    <div id="plex-card" style="margin-top:24px;border-top:1px solid var(--line);padding-top:16px">
+      <h2>Plex (optional)</h2>
+      <p class="dim small" style="margin-top:0;max-width:760px">Connect a Plex Media Server to <b>import your library folders as scan roots</b> and to cross-check Plex items against the disk (Health tab). The easiest way is <b>Sign in with Plex</b>: click it, approve on Plex's own page — you're already signed in there, it's one click — and the app finds your servers. No token hunting. <b>Every file tool in this app works without Plex connected</b> — this only saves typing paths. The connected server's token is stored in <span class="mono">plex.json</span> in the app's data folder; treat that file like a password. Your Plex <i>account</i> sign-in is kept only in memory — enough to switch servers while the app runs — unless you tick <b>remember my sign-in</b> when picking a server, which stores the account token in that same file so switching also survives restarts.</p>
+      <!-- Sign-in block (rendered by JS from the connection state) -->
+      <div id="plx-primary"></div>
+      <details id="plx-manual" style="margin-top:14px">
+        <summary style="cursor:pointer;color:var(--dim);font-size:13px">Advanced: manual connection (URL + token)</summary>
+        <div style="margin-top:8px;max-width:640px">
+          <p class="dim small" style="margin:0 0 4px">For unclaimed or local-only servers that can't use the plex.tv sign-in. The address may be typed with or without <span class="mono">http://</span> — it's added when missing. <b>Test connection checks what's typed here</b>, even before you save; saving runs the test too, so you know immediately whether it worked.</p>
+          <label>Plex server URL</label><input id="plx-url" style="width:100%" placeholder="http://127.0.0.1:32400">
+          <label>Plex token (X-Plex-Token)</label><input id="plx-token" type="password" style="width:100%" placeholder="paste your Plex token" autocomplete="off">
+          <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="primary" id="btn-plx-save">Save Plex settings</button>
+            <button id="btn-plx-test">Test connection</button>
+            <button class="danger" id="btn-plx-clear">Disconnect / clear</button>
+          </div>
+          <div class="small" id="plx-result" style="margin-top:10px"></div>
+        </div>
+      </details>
+      <div style="margin-top:16px">
+        <label style="margin-top:0">Path mappings — server path → this machine's path</label>
+        <p class="dim small" style="margin:0 0 6px">Only needed when Plex and this app live on different machines (e.g. Plex on Ultra, app on Windows). Applies however you connected. Longest matching prefix wins.</p>
+        <div id="plx-maps"></div>
+        <button class="small" id="btn-plx-map-add" style="margin-top:6px">+ Add mapping</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- backnav hint toast (v0.6.1): filled + shown by the backnav
+     snippet in the script below; empty and invisible otherwise. -->
+<div id="backnav-toast" role="status"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   API LAYER — the ONLY place that talks to the backend.
+   Transport separation: UI code below calls api.* exclusively. A future
+   desktop shell swaps this one object for native bindings and nothing
+   else in this file changes.
+   ===================================================================== */
+const BASE = (() => { // baseurl prefix when behind the Ultra nginx proxy
+  const p = window.location.pathname;
+  return p.endsWith("/") ? p : p + "/";
+})();
+async function jfetch(url, opts) {
+  const r = await fetch(BASE + url, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ("HTTP " + r.status));
+  return data;
+}
+const api = {
+  state:       () => jfetch("api/state"),
+  startScan:   (roots) => jfetch("api/scan", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({roots})}),
+  cancelScan:  () => jfetch("api/scan/cancel", {method:"POST"}),
+  library:     (sort, order) => jfetch("api/library?sort=" + encodeURIComponent(sort) + "&order=" + encodeURIComponent(order)),
+  series:      () => jfetch("api/series"),
+  subtitles:   () => jfetch("api/subtitles"),
+  duplicates:  () => jfetch("api/duplicates"),
+  health:      () => jfetch("api/health"),
+  // Health actions — reveal answers in-band what happened
+  // ({mode:"revealed"|"path"}); delete is guarded server-side
+  // (current finding + under a scan root + regular file only).
+  healthReveal:(path) => jfetch("api/health/reveal", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path})}),
+  healthDelete:(path) => jfetch("api/health/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path})}),
+  // Duplicates actions (v0.3.6) — the same reveal/delete pair
+  // for duplicate copies; delete is guarded server-side
+  // (current group member + last-copy protection + under a
+  // scan root + regular file only).
+  duplicatesReveal:(path) => jfetch("api/duplicates/reveal", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path})}),
+  duplicatesDelete:(path) => jfetch("api/duplicates/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path})}),
+  getConfig:   () => jfetch("api/config"),
+  saveConfig:  (cfg) => jfetch("api/config", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(cfg)}),
+  // Settings pass (v0.5.0) — reset-tuning resets ONLY the tuning
+  // knobs server-side; diagnostics is the secret-free support
+  // snapshot the Download diagnostics button saves as a file.
+  resetTuning: () => jfetch("api/config/reset-tuning", {method:"POST"}),
+  diagnostics: () => jfetch("api/diagnostics"),
+  exclusions:  () => jfetch("api/exclusions"),
+  addExclusion:(path, scope) => jfetch("api/exclusions", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path, scope, action:"add"})}),
+  removeExclusion:(path, scope) => jfetch("api/exclusions", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({path, scope, action:"remove"})}),
+  // Plex module (v0.2.0) — settings never carry the token back.
+  plexSettings:  () => jfetch("api/plex/settings"),
+  savePlexSettings:(url, token, mappings) => jfetch("api/plex/settings", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url, token, mappings})}),
+  // v0.3.1: Test sends the values currently typed in the form; the
+  // backend falls back to the saved settings for any blank field.
+  testPlex:      (url, token) => jfetch("api/plex/test", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url: url || "", token: token || ""})}),
+  plexSections:  () => jfetch("api/plex/sections"),
+  plexMissing:   () => jfetch("api/plex/missing", {method:"POST"}),
+  // Plex sign-in (v0.3.1; approval link v0.3.2) — plex.tv PIN
+  // flow: begin returns an approval URL for Plex's own page (the
+  // PIN code rides inside it, never displayed), poll reports
+  // pending/ready/expired, choose connects a server.
+  signinBegin:   () => jfetch("api/plex/signin/begin", {method:"POST"}),
+  signinPoll:    (session) => jfetch("api/plex/signin/poll?session=" + encodeURIComponent(session)),
+  signinChoose:  (session, index, remember) => jfetch("api/plex/signin/choose", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({session, index, remember: !!remember})}),
+  // Server switching — servers lists the account's servers from
+  // the retained/remembered sign-in, switch connects another one
+  // (remember is tri-state: omitted leaves the saved sign-in as
+  // it was), forget-signin clears the saved sign-in only — the
+  // connected server stays connected.
+  plexServers:   () => jfetch("api/plex/servers"),
+  plexSwitch:    (index, remember) => jfetch("api/plex/switch", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(remember == null ? {index} : {index, remember})}),
+  plexForget:    () => jfetch("api/plex/forget-signin", {method:"POST"}),
+  // Organize (v0.3.0) — plan is a dry-run; apply/undo move files.
+  organizePlan:      (root) => jfetch("api/organize/plan", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({root})}),
+  organizeApply:     (plan_id) => jfetch("api/organize/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({plan_id})}),
+  organizeUndo:      (manifest_id) => jfetch("api/organize/undo", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({manifest_id})}),
+  organizeManifests: () => jfetch("api/organize/manifests"),
+};
+
+/* ================= UI helpers ================= */
+const $ = (id) => document.getElementById(id);
+function fmtBytes(n){ if(n===0) return "0 B"; const u=["B","KB","MB","GB","TB"]; let i=0; while(n>=1024&&i<4){n/=1024;i++;} return n.toFixed(i?1:0)+" "+u[i]; }
+function fmtDur(s){ if(!s) return "—"; const m=Math.floor(s/60), ss=Math.round(s%60); return m+":"+String(ss).padStart(2,"0"); }
+/* fileAge renders the v0.3.1 "on this file for Ns" suffix from the
+   state's current_since stamp — shown from ~3s up, so a slow file
+   reads as a slow file, not as a frozen scan. */
+function fileAge(sc){
+  if (!sc.current_since) return "";
+  const secs = Math.floor((Date.now() - Date.parse(sc.current_since)) / 1000);
+  return secs >= 3 ? " (on this file for " + secs + "s)" : "";
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+async function exclude(path, scope){ try{ await api.addExclusion(path, scope); refreshAll(); }catch(e){ alert(e.message); } }
+/* copyText copies via the Clipboard API, falling back to a
+   throwaway textarea + execCommand on older browsers / non-secure
+   contexts where navigator.clipboard is unavailable. */
+async function copyText(t, btn){
+  let ok = false;
+  try{ await navigator.clipboard.writeText(t); ok = true; }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try{ ok = document.execCommand("copy"); }catch(_){ }
+    ta.remove();
+  }
+  if (btn){ const old = btn.textContent; btn.textContent = ok ? "Copied ✓" : "Copy failed"; setTimeout(() => { btn.textContent = old; }, 1600); }
+}
+
+/* ================= Tabs ================= */
+document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll("section.panel").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  $("panel-" + b.dataset.tab).classList.add("active");
+}));
+
+/* === backnav: in-app history for the Android back button (portable) === */
+/* WHY: this app is a single-page tab app — switching tabs never
+   created a browser-history entry, so on Android (installed PWA /
+   WebView) the Back button had nothing in-app to pop and simply
+   closed the app. This snippet mirrors tab navigation into the
+   History API so Back steps back through the tabs the user visited,
+   and at the first tab it becomes a press-again-to-exit prompt
+   instead of an instant close.
+   PORTING: the block between this comment and "end backnav" is
+   self-contained. The ONLY app-specific pieces are the two marked
+   integration points: (a) backnavInitialView() — how to read which
+   tab is shown on load, and (b) backnavShow() — how to show a tab.
+   Everything else (history states, the guard entry, the double-back
+   window, the hint toast) is generic. The hint element is
+   #backnav-toast (one div + the two CSS rules of the same name). */
+(function(){
+  /* --- integration point (a): the initially shown tab is the one
+     whose button carries .active in the markup (fall back to the
+     first tab button if none is marked). --- */
+  function backnavInitialView(){
+    const btns = document.querySelectorAll("#tabs button");
+    for (const b of btns) if (b.classList.contains("active")) return b.dataset.tab;
+    return btns.length ? btns[0].dataset.tab : "";
+  }
+  /* --- integration point (b): show a tab by driving the app's own
+     tab mechanism — clicking its button runs the exact handler a
+     user click runs, so panels/buttons can never drift apart. --- */
+  function backnavShow(name){
+    const b = document.querySelector('#tabs button[data-tab="' + name + '"]');
+    if (b) b.click();
+  }
+
+  const backnavInitial = backnavInitialView();
+  let backnavCurrent = backnavInitial; // tab currently on screen
+  let backnavApplying = false;         // true while a popstate-driven show runs
+  let backnavLastExitTry = 0;          // ms of the last root exit attempt
+  let backnavToastTimer = null;
+
+  /* Guard entry: tag the current entry, then push one more for the
+     initial tab, so the first Back press lands on an entry whose
+     popstate this handler owns instead of leaving the app. */
+  history.replaceState({pfmNav: true, view: backnavInitial}, "");
+  history.pushState({pfmNav: true, view: backnavInitial}, "");
+
+  /* User tab switches push one entry per actual change. Clicks the
+     snippet itself causes (popstate-driven) are flagged by
+     backnavApplying and never push. Programmatic .click() calls
+     from elsewhere in the app (e.g. "jump to Settings") count as
+     user navigation and DO push — Back should undo them too. */
+  document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click", () => {
+    const name = b.dataset.tab;
+    if (backnavApplying || !name || name === backnavCurrent) return;
+    backnavCurrent = name;
+    history.pushState({pfmNav: true, view: name}, "");
+  }));
+
+  function backnavShowGuarded(name){
+    backnavApplying = true;
+    try { backnavShow(name); } finally { backnavApplying = false; }
+    backnavCurrent = name;
+  }
+  function backnavRearm(){
+    history.pushState({pfmNav: true, view: backnavInitial}, "");
+  }
+  function backnavHint(){
+    const t = $("backnav-toast");
+    if (!t) return;
+    t.textContent = "Press back again to exit";
+    t.classList.add("show");
+    if (backnavToastTimer) clearTimeout(backnavToastTimer);
+    backnavToastTimer = setTimeout(() => { t.classList.remove("show"); }, 2000);
+  }
+
+  addEventListener("popstate", (ev) => {
+    const st = ev && ev.state;
+    if (st && st.pfmNav && st.view){
+      /* One of our own entries: show its tab, push nothing.
+         Forward navigation arrives here too — same handling. */
+      backnavShowGuarded(st.view);
+      return;
+    }
+    /* No pfmNav state: the guard entry was consumed — this Back
+       press was an attempt to leave the app from the root. */
+    if (backnavCurrent !== backnavInitial){
+      /* Not on the first tab: spend the press going home and
+         re-arm the guard so the next press is handled too. */
+      backnavShowGuarded(backnavInitial);
+      backnavRearm();
+      return;
+    }
+    /* On the first tab: press-again-to-exit. A second press inside
+       the window is NOT re-armed — one history.back() passes the
+       exit through to the browser. A lone press only shows the
+       hint and re-arms. */
+    const now = Date.now();
+    if (now - backnavLastExitTry <= 2000){
+      backnavLastExitTry = 0;
+      history.back();
+      return;
+    }
+    backnavLastExitTry = now;
+    backnavHint();
+    backnavRearm();
+  });
+})();
+/* === end backnav === */
+
+/* ================= Scan controls + state polling ================= */
+let pollTimer = null;
+/* lastDupSig is the last scan-summary signature the poller saw
+   (v0.3.7): when it changes mid-scan, the pre-audit assembly
+   has persisted new results and the Duplicates tab refreshes. */
+let lastDupSig = "";
+/* v0.1.1: once the user has typed in the roots box, polling must never
+   overwrite their text with the server's saved roots. The box is only
+   populated from state while it is untouched. */
+let rootsDirty = false;
+$("roots").addEventListener("input", () => { rootsDirty = true; });
+/* startScanFromRoots is the ONE scan-start path: the header's
+   Start scan and the Duplicates tab's Rescan (v0.3.7) both call
+   it — same roots box, same backend validation, same alerts
+   (including the no-roots guidance). No second pipeline. */
+async function startScanFromRoots(){
+  const roots = $("roots").value.split("\n").map(s => s.trim()).filter(Boolean);
+  try{
+    const st = await api.startScan(roots);
+    if (st.root_problems && st.root_problems.length)
+      alert("Some roots were skipped and will NOT be scanned:\n\n" + st.root_problems.join("\n"));
+    startPolling();
+  }catch(e){ alert(e.message); }
+}
+$("btn-scan").addEventListener("click", startScanFromRoots);
+$("btn-dup-rescan").addEventListener("click", startScanFromRoots);
+$("btn-cancel").addEventListener("click", async () => { try{ await api.cancelScan(); }catch(e){ alert(e.message); } });
+function startPolling(){ if(pollTimer) return; pollTimer = setInterval(refreshState, 900); }
+async function refreshState(){
+  let st; try{ st = await api.state(); }catch(e){ return; }
+  $("ver").textContent = st.version || "";
+  $("toolinfo").textContent = (st.ffprobe_found ? "ffprobe: " + st.ffprobe_found : "ffprobe NOT FOUND") +
+                              (st.ffmpeg_found ? " · ffmpeg: " + st.ffmpeg_found : " · ffmpeg NOT FOUND");
+  // Plex buttons are NEVER disabled (v0.3.1): a disabled button
+  // gives zero feedback and read as "this app is broken" in the
+  // live test. Clicking one while Plex isn't connected explains
+  // itself and offers a jump to the Plex card instead.
+  // Corrupt-config warning (v0.5.0): surfaced from state exactly
+  // like root_problems — the backend preserved the unreadable
+  // config.json as config.json.corrupt at startup and is running
+  // on defaults; the Settings line stays until the next start
+  // with a readable config.
+  const cfgWarn = $("cfg-warning");
+  if (st.config_warning){ cfgWarn.textContent = "⚠ " + st.config_warning; cfgWarn.style.display = "block"; }
+  else cfgWarn.style.display = "none";
+  const plexOn = !!st.plex_configured;
+  $("btn-import").title = plexOn ? ("Import library roots from " + (st.plex_server_name || st.plex_url || "Plex")) : "Connect Plex in Settings first";
+  $("btn-missing").title = plexOn ? "Cross-check Plex items against this disk" : "Connect Plex in Settings first";
+  if (!rootsDirty && document.activeElement !== $("roots") && st.roots) $("roots").value = st.roots.join("\n");
+  // Organize tab: keep the "use a scan root" picker in sync with state.
+  const pick = $("org-root-pick"), curPick = pick.value;
+  const wantPick = '<option value="">Use a scan root…</option>' + (st.roots||[]).map(r => '<option value="' + esc(r) + '">' + esc(r) + "</option>").join("");
+  if (pick.innerHTML !== wantPick){ pick.innerHTML = wantPick; pick.value = curPick; }
+  const sc = st.scan, sum = sc.summary || {};
+  const pct = sc.total ? Math.round(100 * (sc.done||0) / sc.total) : 0;
+  $("progbar").style.width = (sc.running ? pct : 100) + "%";
+  document.querySelector(".progress").classList.toggle("indet", !!(sc.running && !sc.total));
+  // Phase labels (v0.3.4): backend phase ids are terse; the
+  // embedded-audit phase reads as a sentence in the header.
+  const phaseNames = {"subtitle-audit": "auditing embedded subtitles"};
+  const phaseShown = phaseNames[sc.phase] || sc.phase || "";
+  const phase = sc.running ? ("Scanning — " + phaseShown + " " + (sc.done||0) + "/" + (sc.total||0)) :
+                (sc.last_error ? "Last scan: " + sc.last_error : (sc.scanned_at ? "Last scan " + sc.scanned_at : "No scan yet"));
+  const curChip = (sc.running && sc.current)
+    ? '<span class="chip">File: <span class="mono">' + esc(sc.current) + "</span>" + fileAge(sc) + "</span>" : "";
+  $("chips").innerHTML =
+    '<span class="chip">' + esc(phase) + "</span>" + curChip +
+    ((sc.root_problems && sc.root_problems.length) ? '<span class="chip warn">Skipped roots: ' + esc(sc.root_problems.join(" · ")) + "</span>" : "") +
+    '<span class="chip">Media <b>' + (sum.media_count||0) + "</b></span>" +
+    '<span class="chip">Library size <b>' + fmtBytes(sum.total_bytes||0) + "</b></span>" +
+    '<span class="chip warn">Subtitles <b>' + (sum.subtitle_findings||0) + "</b></span>" +
+    '<span class="chip warn">Duplicates <b>' + (sum.duplicate_groups||0) + " groups · " + fmtBytes(sum.duplicate_wasted_bytes||0) + " wasted</b></span>" +
+    '<span class="chip warn">Health <b>' + (sum.health_findings||0) + "</b></span>" +
+    '<span class="chip">Exclusions <b>' + (sum.exclusion_count||0) + "</b></span>";
+  // Duplicates Rescan mirrors the scan (v0.3.7): disabled
+  // while a scan runs, the live phase/progress beside it,
+  // and the groups re-read on their own when new results
+  // land — the pre-audit assembly changes the summary
+  // mid-scan, so a changed signature means fresh groups are
+  // already being served (scan finish refreshes everything
+  // via refreshAll below regardless).
+  $("btn-dup-rescan").disabled = !!sc.running;
+  $("dup-scan-status").textContent = sc.running ? (phaseShown + " " + (sc.done||0) + "/" + (sc.total||0)) : "";
+  const dupSig = [sum.media_count||0, sum.duplicate_groups||0, sum.duplicate_wasted_bytes||0].join("/");
+  if (sc.running && lastDupSig && dupSig !== lastDupSig) refreshDuplicates();
+  lastDupSig = dupSig;
+  $("sub-audit-notice").style.display = sc.audit_pending ? "block" : "none";
+  $("n-sub").textContent = sum.subtitle_findings ? "(" + sum.subtitle_findings + ")" : "";
+  $("n-dup").textContent = sum.duplicate_groups ? "(" + sum.duplicate_groups + ")" : "";
+  $("n-health").textContent = sum.health_findings ? "(" + sum.health_findings + ")" : "";
+  if (!sc.running && pollTimer){ clearInterval(pollTimer); pollTimer = null; refreshAll(); }
+}
+
+/* ================= Library ================= */
+async function refreshLibrary(){
+  const [lib, ser] = await Promise.all([api.library($("lib-sort").value, $("lib-order").value), api.series()]);
+  const items = lib.items || [];
+  $("lib-empty").style.display = items.length ? "none" : "block";
+  document.querySelector("#lib-table tbody").innerHTML = items.map(it => {
+    const se = it.kind === "episode" ? ("S" + String(it.season||0).padStart(2,"0") + "E" + (it.episodes||[]).map(e => String(e).padStart(2,"0")).join(",E")) : "";
+    return '<tr class="' + (it.excluded ? "excluded-row" : "") + '"><td><b>' + esc(it.title) + "</b>" +
+      (it.edition ? ' <span class="badge b-purple">' + esc(it.edition) + "</span>" : "") +
+      (it.excluded ? ' <span class="badge b-amber">excluded: ' + esc((it.exclusion_scopes||[]).join(", ")) + "</span>" : "") +
+      '</td><td>' + esc(it.kind) + '</td><td>' + (it.year || "") + (se ? ' <span class="mono">' + se + "</span>" : "") +
+      "</td><td>" + fmtBytes(it.size) + "</td><td>" + fmtDur(it.duration) + "</td><td>" + esc(it.resolution||"") +
+      (it.hdr ? ' <span class="badge b-blue">HDR</span>' : "") + "</td><td>" + esc(it.codec||"") +
+      '</td><td class="mono dim">' + esc(it.path) + '</td>' +
+      '<td><button class="small" onclick="exclude(this.dataset.p,\'all\')" data-p="' + esc(it.path) + '">Exclude</button></td></tr>';
+  }).join("");
+  const series = ser.series || [];
+  $("series-block").innerHTML = series.length ?
+    "<h2>Series totals</h2><table><thead><tr><th>Series</th><th>Total size</th><th>Episodes</th><th>Avg episode</th><th>Largest</th><th>Seasons</th></tr></thead><tbody>" +
+    series.map(s => "<tr><td><b>" + esc(s.series) + "</b></td><td>" + fmtBytes(s.total_bytes) + "</td><td>" + s.episode_files +
+      "</td><td>" + fmtBytes(s.avg_episode_bytes) + "</td><td>" + fmtBytes(s.largest_episode_bytes) + "</td><td>" +
+      Object.keys(s.seasons||{}).sort().map(k => "S" + k + ": " + fmtBytes(s.seasons[k])).join(" · ") + "</td></tr>").join("") +
+    "</tbody></table><br>" : "";
+}
+$("btn-lib-refresh").addEventListener("click", refreshLibrary);
+$("lib-sort").addEventListener("change", refreshLibrary);
+$("lib-order").addEventListener("change", refreshLibrary);
+$("link-export-json").href = BASE + "api/export.json";
+$("link-export-csv").href = BASE + "api/export.csv";
+
+/* ================= Subtitles ================= */
+async function refreshSubtitles(){
+  const data = await api.subtitles();
+  const rows = data.findings || [];
+  $("sub-empty").style.display = rows.length ? "none" : "block";
+  const badge = {"mismatch":"b-red","missing-language":"b-amber","uncertain":"b-amber","cannot-verify":"b-dim"};
+  document.querySelector("#sub-table tbody").innerHTML = rows.map(f =>
+    "<tr><td><span class='badge " + (badge[f.status]||"b-dim") + "'>" + esc(f.status) + "</span>" +
+    (f.source === "embedded" ? '<div class="small dim">embedded stream ' + f.stream_index + "</div>" : '<div class="small dim">external</div>') +
+    "</td><td class='mono'>" + esc(f.declared || "—") + " → " + esc(f.detected || "—") + "</td><td>" +
+    (f.confidence ? Math.round(f.confidence*100) + "%" : "—") + '<div class="small dim">' + (f.words||0) + " words</div></td>" +
+    '<td class="mono dim">' + esc(f.path) + '<div class="small">' + esc(f.note||"") + "</div></td>" +
+    '<td class="sample">' + (f.sample||[]).map(esc).join("<br>") + "</td>" +
+    '<td><button class="small" onclick="exclude(this.dataset.p,\'subtitles\')" data-p="' + esc(f.path) + '">Exclude</button></td></tr>'
+  ).join("");
+}
+
+/* ================= Duplicates =================
+   v0.6.0 interface overhaul: the fetched groups are kept in
+   dupGroups and rendered client-side, so search / filter /
+   sort / expansion / batch selection all survive the state
+   poller's mid-scan refreshDuplicates() calls. Expansion is
+   keyed by group key, selection by copy path; both are pruned
+   against each fresh fetch. Until the user expands or
+   collapses anything themselves (dupAutoExpand), the first
+   group in the current view starts expanded. */
+let dupGroups = [];
+const dupExpanded = new Set();
+const dupSelected = new Map(); // path -> {path, size, keeper}
+let dupAutoExpand = true;
+let dupBatchPaths = [];
+
+function dupGroupLabel(g){
+  return g.kind === "episode"
+    ? g.title + " S" + String(g.season||0).padStart(2,"0") + "E" + (g.episodes||[]).join(",E")
+    : g.title + (g.year ? " (" + g.year + ")" : "");
+}
+
+async function refreshDuplicates(){
+  const data = await api.duplicates();
+  dupGroups = data.groups || [];
+  // Prune view state against what still exists: expansion keys
+  // of vanished groups, selections of vanished copies — and of
+  // copies that are now their group's last remaining one (the
+  // server would refuse those deletes anyway). Surviving
+  // selections pick up fresh size/keeper facts.
+  const keys = new Set(dupGroups.map(g => g.key));
+  dupExpanded.forEach(k => { if (!keys.has(k)) dupExpanded.delete(k); });
+  const groupSize = new Map();
+  dupGroups.forEach(g => g.copies.forEach(c => {
+    groupSize.set(c.path, g.copies.length);
+    if (dupSelected.has(c.path)) dupSelected.set(c.path, {path: c.path, size: c.size || 0, keeper: !!c.is_keeper});
+  }));
+  dupSelected.forEach((v, p) => { if (!groupSize.has(p) || groupSize.get(p) <= 1) dupSelected.delete(p); });
+  renderDupSummary();
+  renderDuplicates();
+}
+
+/* Summary strip: counts over ALL fetched groups (the filtered
+   view has its own "showing X of Y" line). */
+function renderDupSummary(){
+  const el = $("dup-summary");
+  if (!dupGroups.length){ el.style.display = "none"; el.innerHTML = ""; return; }
+  let wasted = 0, conf = 0, prob = 0, exact = 0;
+  dupGroups.forEach(g => {
+    wasted += g.wasted_bytes || 0;
+    if (g.status === "confirmed") conf++;
+    else if (g.status === "probable") prob++;
+    if (g.has_exact) exact++;
+  });
+  el.innerHTML =
+    '<span class="chip"><b>' + dupGroups.length + "</b> groups</span>" +
+    '<span class="chip warn">Wasted <b>' + fmtBytes(wasted) + "</b></span>" +
+    '<span class="chip good">Confirmed <b>' + conf + "</b></span>" +
+    '<span class="chip info">Probable <b>' + prob + "</b></span>" +
+    '<span class="chip info">With exact duplicates <b>' + exact + "</b></span>";
+  el.style.display = "flex";
+}
+
+/* The filtered + sorted view of dupGroups per the controls. */
+function dupView(){
+  const q = $("dup-search").value.trim().toLowerCase();
+  const sf = $("dup-status-filter").value;
+  const kf = $("dup-kind-filter").value;
+  const view = dupGroups.filter(g => {
+    if (sf === "exact"){ if (!g.has_exact) return false; }
+    else if (sf !== "all" && g.status !== sf) return false;
+    if (kf !== "all" && g.kind !== kf) return false;
+    if (q && !dupGroupLabel(g).toLowerCase().includes(q) &&
+        !g.copies.some(c => c.path.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const sort = $("dup-sort").value;
+  const maxSize = g => g.copies.reduce((m, c) => Math.max(m, c.size || 0), 0);
+  view.sort((a, b) => {
+    if (sort === "copies") return (b.copies.length - a.copies.length) || ((b.wasted_bytes || 0) - (a.wasted_bytes || 0));
+    if (sort === "largest") return maxSize(b) - maxSize(a);
+    if (sort === "title") return dupGroupLabel(a).localeCompare(dupGroupLabel(b));
+    return (b.wasted_bytes || 0) - (a.wasted_bytes || 0); // "waste" (default)
+  });
+  return view;
+}
+
+function renderDuplicates(){
+  const view = dupView();
+  if (dupAutoExpand && view.length && !view.some(g => dupExpanded.has(g.key)))
+    dupExpanded.add(view[0].key);
+  $("dup-showing").textContent = dupGroups.length
+    ? "Showing " + view.length + " of " + dupGroups.length + " groups" : "";
+  const empty = $("dup-empty");
+  if (!dupGroups.length){
+    empty.textContent = "No duplicate groups.";
+    empty.style.display = "block";
+    $("dup-list").innerHTML = "";
+  } else if (!view.length){
+    empty.textContent = "No groups match the current filters.";
+    empty.style.display = "block";
+    $("dup-list").innerHTML = "";
+  } else {
+    empty.style.display = "none";
+    $("dup-list").innerHTML = view.map(renderDupGroup).join("");
+  }
+  renderDupBatchBar();
+}
+
+function dupToggleGroup(key){
+  dupAutoExpand = false;
+  if (dupExpanded.has(key)) dupExpanded.delete(key); else dupExpanded.add(key);
+  renderDuplicates();
+}
+
+function renderDupGroup(g){
+  const badge = {"confirmed":"b-green","probable":"b-amber","demoted":"b-red"}[g.status] || "b-dim";
+  const label = dupGroupLabel(g);
+  const lastCopy = g.copies.length <= 1;
+  // Comparison aids: the group's best bitrate / picture height,
+  // and the keeper every duration delta is measured against.
+  let maxBitrate = 0, maxHeight = 0, keeper = null;
+  g.copies.forEach(c => {
+    if ((c.bitrate || 0) > maxBitrate) maxBitrate = c.bitrate || 0;
+    if ((c.height || 0) > maxHeight) maxHeight = c.height || 0;
+    if (c.is_keeper) keeper = c;
+  });
+  const copies = g.copies.map(c => {
+    // The delete button is disabled on a group's last
+    // remaining copy (the server refuses the same delete —
+    // this is the courtesy half of last-copy protection). The
+    // batch checkbox mirrors the same rule and title.
+    const delBtn = lastCopy
+      ? '<button class="small danger" disabled title="Last remaining copy">Delete</button> '
+      : '<button class="small danger" onclick="dupDeleteAsk(this.dataset.p,this.dataset.s,this.dataset.t,this.dataset.r,this.dataset.k)" data-p="' + esc(c.path) + '" data-s="' + (c.size||0) + '" data-t="' + esc(label) + '" data-r="' + (g.copies.length - 1) + '" data-k="' + (c.is_keeper ? "1" : "") + '">Delete</button> ';
+    const check = '<input type="checkbox" class="dup-check" data-p="' + esc(c.path) + '" onchange="dupToggleSelect(this)"' +
+      (dupSelected.has(c.path) ? " checked" : "") + (lastCopy ? ' disabled title="Last remaining copy"' : "") + "> ";
+    const resBest = maxHeight > 0 && (c.height || 0) === maxHeight;
+    const brBest = maxBitrate > 0 && (c.bitrate || 0) === maxBitrate;
+    let delta = "";
+    if (keeper && c !== keeper && keeper.duration && c.duration){
+      const d = c.duration - keeper.duration;
+      if (Math.abs(d) >= 2)
+        delta = ' <span class="dup-delta">(' + (d > 0 ? "+" : "-") + fmtDur(Math.abs(d)) + ")</span>";
+    }
+    return "<tr" + (c.is_keeper ? ' class="dup-keeper"' : "") + "><td>" + check + (c.is_keeper ? '<span class="keeper-chip">★ Keeper</span>' : "") +
+    (c.exact_duplicate ? ' <span class="badge b-blue">exact dup</span>' : "") + '</td><td>' + fmtBytes(c.size) +
+    "</td><td>" + (resBest ? '<span class="dup-best">' : "") + esc(c.resolution||"") + (resBest ? "</span>" : "") + (c.hdr ? " HDR" : "") + "</td><td>" + esc(c.codec||"") + "</td><td>" +
+    (c.bitrate ? (brBest ? '<span class="dup-best">' : "") + (c.bitrate/1e6).toFixed(1) + " Mbps" + (brBest ? "</span>" : "") : "—") + "</td><td>" + fmtDur(c.duration) + delta +
+    '</td><td class="mono dim dup-pathcell"><span class="dup-pathtext" title="' + esc(c.path) + '">' + esc(c.path) + "</span></td>" +
+    '<td style="white-space:nowrap">' +
+    '<button class="small" onclick="dupReveal(this.dataset.p)" data-p="' + esc(c.path) + '">Open location</button> ' +
+    delBtn +
+    '<button class="small" onclick="exclude(this.dataset.p,\'duplicates\')" data-p="' + esc(c.path) + '">Exclude</button></td></tr>';
+  }).join("");
+  const links = (g.cross_links||[]).map(l =>
+    '<div class="small dim">⇄ different edition: <b>' + esc(l.edition) + "</b> — " + l.count + " file(s): " +
+    l.paths.map(esc).join(" · ") + "</div>").join("");
+  return '<div class="group' + (dupExpanded.has(g.key) ? " open" : "") + '" data-k="' + esc(g.key) + '"><h3 class="dup-gtitle" data-k="' + esc(g.key) + '" onclick="dupToggleGroup(this.dataset.k)" title="Show / hide the copies">' +
+    '<span class="dup-caret">▸</span> ' + esc(label) +
+    (g.edition ? ' <span class="badge b-purple">' + esc(g.edition) + "</span>" : "") +
+    ' <span class="badge ' + badge + '">' + esc(g.status) + "</span>" +
+    (g.has_exact ? ' <span class="badge b-blue">has exact duplicates</span>' : "") +
+    ' <span class="small dim">' + g.copies.length + " copies · Wasted: <b style='color:var(--red)'>" + fmtBytes(g.wasted_bytes || 0) + "</b></span></h3>" +
+    '<div class="dup-gmeta"><span class="grow small dim">' + esc(g.note||"") + (g.note ? " · " : "") +
+    "Keeper: <b>" + esc(baseName(g.keeper_path || "")) + "</b>" + (g.keeper_why ? " — " + esc(g.keeper_why) : "") + "</span>" +
+    '<button class="small" onclick="dupSelectAllButKeeper(this.dataset.k)" data-k="' + esc(g.key) + '">Select all but keeper</button> ' +
+    '<button class="small" onclick="dupExcludeGroup(this.dataset.k)" data-k="' + esc(g.key) + '">Exclude all copies</button></div>' + links +
+    '<div class="dup-body"><div class="dup-tablewrap"><table><thead><tr><th></th><th>Size</th><th>Res</th><th>Codec</th><th>Bitrate</th><th>Duration</th><th>Path</th><th></th></tr></thead><tbody>' +
+    copies + "</tbody></table></div></div></div>";
+}
+
+/* ============ Batch select + delete (v0.6.0) ============
+   Selection is a convenience layer over the EXISTING per-file
+   delete endpoint: the batch confirm reuses the single-delete
+   panel, and confirming calls the endpoint once per file, in
+   order, collecting failures (the server's last-copy guard can
+   legitimately refuse a late file once its group has shrunk). */
+function dupToggleSelect(cb){
+  const path = cb.dataset.p;
+  if (cb.checked){
+    for (const g of dupGroups) for (const c of g.copies)
+      if (c.path === path){ dupSelected.set(path, {path, size: c.size || 0, keeper: !!c.is_keeper}); renderDupBatchBar(); return; }
+  } else dupSelected.delete(path);
+  renderDupBatchBar();
+}
+function dupSelectAllButKeeper(key){
+  const g = dupGroups.find(x => x.key === key);
+  if (!g || g.copies.length <= 1) return;
+  g.copies.forEach(c => { if (!c.is_keeper) dupSelected.set(c.path, {path: c.path, size: c.size || 0, keeper: false}); });
+  renderDuplicates();
+}
+function renderDupBatchBar(){
+  const n = dupSelected.size;
+  $("dup-batchbar").style.display = n ? "flex" : "none";
+  if (n){
+    let total = 0;
+    dupSelected.forEach(v => { total += v.size || 0; });
+    $("dup-batch-info").textContent = n + (n === 1 ? " file" : " files") + " selected · " + fmtBytes(total);
+  }
+}
+function dupBatchDeleteAsk(){
+  if (!dupSelected.size) return;
+  dupDeletePath = "";
+  dupBatchPaths = [...dupSelected.keys()];
+  let total = 0, keeperPicked = false;
+  const rows = dupBatchPaths.map(p => {
+    const v = dupSelected.get(p);
+    total += v.size || 0;
+    if (v.keeper) keeperPicked = true;
+    return '<div class="mono small" style="margin-bottom:2px">' + esc(p) + " — " + fmtBytes(v.size || 0) + (v.keeper ? ' <b style="color:var(--amber)">(suggested keeper ★)</b>' : "") + "</div>";
+  }).join("");
+  $("dup-confirm").innerHTML =
+    '<div style="margin-bottom:6px"><b style="color:var(--red)">Delete ' + dupBatchPaths.length + ' selected copies permanently?</b></div>' +
+    rows +
+    '<div class="small dim" style="margin:6px 0 10px">Total reclaimable: <b>' + fmtBytes(total) + "</b>." +
+    (keeperPicked ? ' <b style="color:var(--amber)">At least one selected copy is a suggested keeper (★) — double-check before deleting.</b>' : "") + "</div>" +
+    '<button class="small danger" onclick="dupBatchDeleteGo()">Delete ' + dupBatchPaths.length + ' files</button> ' +
+    '<button class="small" onclick="dupDeleteCancel()">Cancel</button>';
+  $("dup-confirm").style.display = "block";
+}
+async function dupBatchDeleteGo(){
+  const paths = dupBatchPaths.slice();
+  if (!paths.length) return;
+  dupDeleteCancel();
+  let ok = 0;
+  const failures = [];
+  for (const p of paths){
+    try{ await api.duplicatesDelete(p); ok++; dupSelected.delete(p); }
+    catch(e){ failures.push(baseName(p) + ": " + e.message); }
+  }
+  dupNote("Deleted " + ok + " of " + paths.length +
+    (failures.length ? ' — failures: <span style="color:var(--red)">' + esc(failures.join("; ")) + "</span>" : "") + ".");
+  await refreshDuplicates();
+  await refreshState();
+}
+/* Group exclude: every copy path goes through the existing
+   per-path exclusions API, one call at a time, then the whole
+   UI refreshes (the per-copy Exclude button's behavior). */
+async function dupExcludeGroup(key){
+  const g = dupGroups.find(x => x.key === key);
+  if (!g) return;
+  try{
+    for (const c of g.copies) await api.addExclusion(c.path, "duplicates");
+    dupNote("Excluded all " + g.copies.length + " copies of <b>" + esc(dupGroupLabel(g)) + "</b> from duplicate grouping.");
+    await refreshAll();
+  }catch(e){ dupNote('<span style="color:var(--red)">' + esc(e.message) + "</span>"); }
+}
+$("dup-search").addEventListener("input", renderDuplicates);
+$("dup-status-filter").addEventListener("change", renderDuplicates);
+$("dup-kind-filter").addEventListener("change", renderDuplicates);
+$("dup-sort").addEventListener("change", renderDuplicates);
+$("dup-expand-all").addEventListener("click", () => { dupAutoExpand = false; dupGroups.forEach(g => dupExpanded.add(g.key)); renderDuplicates(); });
+$("dup-collapse-all").addEventListener("click", () => { dupAutoExpand = false; dupExpanded.clear(); renderDuplicates(); });
+$("btn-dup-batch-clear").addEventListener("click", () => { dupSelected.clear(); renderDuplicates(); });
+$("btn-dup-batch-delete").addEventListener("click", dupBatchDeleteAsk);
+
+/* ============ Duplicates actions (v0.3.6) ============
+   The Health tab's action pair, for duplicate copies. The
+   reveal presentation is shared (presentReveal below); the
+   delete confirm panel adds the group context the Health
+   panel doesn't have: the group title, how many copies
+   remain after this delete, and a plain warning when the
+   copy is the group's suggested keeper. The server
+   re-validates everything (current group member, last-copy
+   protection, under a scan root, regular file) — the panel
+   and the disabled last-copy button are courtesies. */
+function dupNote(msg){ $("dup-note").innerHTML = msg; }
+
+async function dupReveal(path){
+  try{
+    const r = await api.duplicatesReveal(path);
+    presentReveal(r, path, $("dup-pathbox"), $("dup-path-text"), dupNote);
+  }catch(e){ dupNote('<span style="color:var(--red)">' + esc(e.message) + "</span>"); }
+}
+$("btn-dup-copy").addEventListener("click", () => copyText($("dup-path-text").textContent, $("btn-dup-copy")));
+$("btn-dup-pathclose").addEventListener("click", () => { $("dup-pathbox").style.display = "none"; });
+
+let dupDeletePath = "";
+function dupDeleteAsk(path, size, groupTitle, remaining, keeper){
+  dupDeletePath = path;
+  dupBatchPaths = []; // the confirm panel is shared with batch delete (v0.6.0) — one mode at a time
+  const n = Number(remaining) || 0;
+  $("dup-confirm").innerHTML =
+    '<div style="margin-bottom:6px"><b style="color:var(--red)">Delete this copy permanently?</b></div>' +
+    '<div class="mono small" style="margin-bottom:4px">' + esc(path) + "</div>" +
+    '<div class="small dim" style="margin-bottom:4px">Size: ' + fmtBytes(Number(size) || 0) + " · Duplicate group: " + esc(groupTitle) + "</div>" +
+    '<div class="small dim" style="margin-bottom:10px">' + n + (n === 1 ? " copy" : " copies") + " will remain after this delete." +
+    (keeper ? ' <b style="color:var(--amber)">This is the suggested keeper copy (★) — the copy the app would keep if you deleted the others instead.</b>' : "") + "</div>" +
+    '<button class="small danger" onclick="dupDeleteGo()">Delete ' + esc(baseName(path)) + "</button> " +
+    '<button class="small" onclick="dupDeleteCancel()">Cancel</button>';
+  $("dup-confirm").style.display = "block";
+}
+function dupDeleteCancel(){
+  dupDeletePath = "";
+  dupBatchPaths = [];
+  $("dup-confirm").style.display = "none";
+  $("dup-confirm").innerHTML = "";
+}
+async function dupDeleteGo(){
+  const path = dupDeletePath;
+  if (!path) return;
+  try{
+    await api.duplicatesDelete(path);
+    dupDeleteCancel();
+    dupNote("Deleted <b>" + esc(baseName(path)) + "</b>.");
+    await refreshDuplicates();
+    await refreshState();
+  }catch(e){
+    dupDeleteCancel();
+    dupNote('<span style="color:var(--red)">' + esc(e.message) + "</span>");
+    await refreshDuplicates();
+  }
+}
+
+/* ================= Health ================= */
+async function refreshHealth(){
+  const data = await api.health();
+  const rows = data.findings || [];
+  $("health-empty").style.display = rows.length ? "none" : "block";
+  document.querySelector("#health-table tbody").innerHTML = rows.map(f =>
+    '<tr><td><span class="badge b-red">' + esc(f.type) + '</span></td><td class="mono dim">' + esc(f.path) +
+    "</td><td>" + fmtBytes(f.size||0) + '</td><td class="small">' + esc(f.evidence) + "</td>" +
+    '<td style="white-space:nowrap">' +
+    '<button class="small" onclick="healthReveal(this.dataset.p)" data-p="' + esc(f.path) + '">Open location</button> ' +
+    '<button class="small danger" onclick="healthDeleteAsk(this.dataset.p,this.dataset.s,this.dataset.e)" data-p="' + esc(f.path) + '" data-s="' + (f.size||0) + '" data-e="' + esc(f.evidence) + '">Delete</button> ' +
+    '<button class="small" onclick="exclude(this.dataset.p,\'health\')" data-p="' + esc(f.path) + '">Exclude</button></td></tr>'
+  ).join("");
+}
+
+function baseName(p){ const parts = String(p).split(/[\\/]/); return parts[parts.length - 1] || p; }
+function healthNote(msg){ $("health-note").innerHTML = msg; }
+
+/* Open location: the server says what actually happened — a
+   file-manager window was launched on the host ("revealed"), or
+   the host is headless and the path itself is the answer
+   ("path"), shown in the path box with a copy button. The
+   presentation is shared with the Duplicates tab (dupReveal):
+   only the tab's own note line and path box differ. */
+function presentReveal(r, path, box, textEl, noteFn){
+  if (r.mode === "revealed"){
+    box.style.display = "none";
+    noteFn("Opened <b>" + esc(baseName(path)) + "</b> in the file manager.");
+  } else {
+    textEl.textContent = r.path || path;
+    box.style.display = "block";
+    noteFn("This host has no file manager to open (headless) — the file's location is shown above.");
+  }
+}
+async function healthReveal(path){
+  try{
+    const r = await api.healthReveal(path);
+    presentReveal(r, path, $("health-pathbox"), $("health-path-text"), healthNote);
+  }catch(e){ healthNote('<span style="color:var(--red)">' + esc(e.message) + "</span>"); }
+}
+$("btn-health-copy").addEventListener("click", () => copyText($("health-path-text").textContent, $("btn-health-copy")));
+$("btn-health-pathclose").addEventListener("click", () => { $("health-pathbox").style.display = "none"; });
+
+/* Delete: two-step by design. Ask renders the inline confirm
+   panel (full path, size, the finding's own evidence) with the
+   confirm button labelled by the file's name; Go performs the
+   delete and refreshes the list + header counts. The server
+   re-validates everything (current finding, under a scan root,
+   regular file) — this panel is a courtesy, not the guard. */
+let healthDeletePath = "";
+function healthDeleteAsk(path, size, evidence){
+  healthDeletePath = path;
+  $("health-confirm").innerHTML =
+    '<div style="margin-bottom:6px"><b style="color:var(--red)">Delete this file permanently?</b></div>' +
+    '<div class="mono small" style="margin-bottom:4px">' + esc(path) + "</div>" +
+    '<div class="small dim" style="margin-bottom:10px">Size: ' + fmtBytes(Number(size) || 0) + " · Reason flagged: " + esc(evidence) + "</div>" +
+    '<button class="small danger" onclick="healthDeleteGo()">Delete ' + esc(baseName(path)) + "</button> " +
+    '<button class="small" onclick="healthDeleteCancel()">Cancel</button>';
+  $("health-confirm").style.display = "block";
+}
+function healthDeleteCancel(){
+  healthDeletePath = "";
+  $("health-confirm").style.display = "none";
+  $("health-confirm").innerHTML = "";
+}
+async function healthDeleteGo(){
+  const path = healthDeletePath;
+  if (!path) return;
+  try{
+    await api.healthDelete(path);
+    healthDeleteCancel();
+    healthNote("Deleted <b>" + esc(baseName(path)) + "</b>.");
+    await refreshHealth();
+    await refreshState();
+  }catch(e){
+    healthDeleteCancel();
+    healthNote('<span style="color:var(--red)">' + esc(e.message) + "</span>");
+    await refreshHealth();
+  }
+}
+
+/* ================= Settings ================= */
+let currentCfg = null;
+async function refreshSettings(){
+  currentCfg = await api.getConfig();
+  $("cfg-ffprobe").value = currentCfg.ffprobe_path || "";
+  $("cfg-ffmpeg").value = currentCfg.ffmpeg_path || "";
+  $("cfg-subconf").value = currentCfg.subtitle_confidence;
+  $("cfg-durpct").value = currentCfg.duration_tolerance_pct;
+  $("cfg-dursec").value = currentCfg.duration_tolerance_sec;
+  $("cfg-floor").value = currentCfg.tiny_file_floor_bytes;
+  $("cfg-workers").value = currentCfg.workers;
+  $("cfg-probe-timeout").value = currentCfg.probe_timeout_sec;
+  $("cfg-sub-sample").value = currentCfg.subtitle_sample_sec;
+  $("cfg-sub-timeout").value = currentCfg.subtitle_extract_timeout_sec;
+  $("cfg-sub-tracks").value = currentCfg.subtitle_max_tracks;
+  if (!rootsDirty && document.activeElement !== $("roots")) $("roots").value = (currentCfg.roots||[]).join("\n");
+  await refreshPlexSettings();
+  const ex = await api.exclusions();
+  const list = ex.exclusions || [];
+  $("ex-empty").style.display = list.length ? "none" : "block";
+  document.querySelector("#ex-table tbody").innerHTML = list.map(e =>
+    '<tr><td class="mono dim">' + esc(e.path) + "</td><td><span class='badge b-amber'>" + esc(e.scope) + "</span></td>" +
+    '<td><button class="small danger" onclick="unexclude(this.dataset.p,this.dataset.s)" data-p="' + esc(e.path) + '" data-s="' + esc(e.scope) + '">Remove</button></td></tr>'
+  ).join("");
+}
+async function unexclude(path, scope){ try{ await api.removeExclusion(path, scope); refreshAll(); }catch(e){ alert(e.message); } }
+$("btn-cfg-save").addEventListener("click", async () => {
+  if (!currentCfg) return;
+  const cfg = Object.assign({}, currentCfg, {
+    roots: $("roots").value.split("\n").map(s => s.trim()).filter(Boolean),
+    ffprobe_path: $("cfg-ffprobe").value.trim(),
+    ffmpeg_path: $("cfg-ffmpeg").value.trim(),
+    subtitle_confidence: parseFloat($("cfg-subconf").value) || 0.75,
+    duration_tolerance_pct: parseFloat($("cfg-durpct").value) || 0,
+    duration_tolerance_sec: parseFloat($("cfg-dursec").value) || 0,
+    tiny_file_floor_bytes: parseInt($("cfg-floor").value) || 0,
+    workers: parseInt($("cfg-workers").value) || 4,
+    probe_timeout_sec: parseInt($("cfg-probe-timeout").value) || 60,
+    subtitle_sample_sec: parseInt($("cfg-sub-sample").value) || 120,
+    subtitle_extract_timeout_sec: parseInt($("cfg-sub-timeout").value) || 45,
+    subtitle_max_tracks: parseInt($("cfg-sub-tracks").value) || 6,
+  });
+  try{ currentCfg = await api.saveConfig(cfg); $("cfg-saved").textContent = "saved ✓"; refreshState(); }
+  catch(e){ alert(e.message); }
+});
+/* Reset tuning (v0.5.0): the server resets ONLY the tuning knobs
+   (workers, thresholds, timeouts, track cap) — roots, exclusions,
+   and tool paths are setup, not tuning, and survive. Native
+   confirm(), the same pattern as the Plex clear/forget actions. */
+$("btn-cfg-reset-tuning").addEventListener("click", async () => {
+  if (!confirm("Reset the tuning settings (workers, confidence threshold, duration tolerances, tiny-file floor, probe/subtitle timeouts and track cap) to their defaults? Your scan roots, exclusions, and ffprobe/ffmpeg paths are not changed.")) return;
+  try{ currentCfg = await api.resetTuning(); await refreshSettings(); $("cfg-saved").textContent = "tuning reset to defaults ✓"; }
+  catch(e){ alert(e.message); }
+});
+/* Download diagnostics (v0.5.0): fetch the secret-free support
+   snapshot and save it as a JSON file — the one attachment that
+   answers "which build, which tools, what tuning, what did the
+   last scan see" when something's wrong. */
+$("btn-diagnostics").addEventListener("click", async () => {
+  try{
+    const d = await api.diagnostics();
+    const blob = new Blob([JSON.stringify(d, null, 2)], {type: "application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "plex-file-manager-diagnostics.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(e){ alert(e.message); }
+});
+$("btn-ex-add").addEventListener("click", async () => {
+  const p = $("ex-path").value.trim(); if (!p) return;
+  try{ await api.addExclusion(p, $("ex-scope").value); $("ex-path").value = ""; refreshAll(); }
+  catch(e){ alert(e.message); }
+});
+
+/* ================= Plex (v0.2.0): settings, import, cross-check =================
+   Everything here talks to the backend only through api.* (transport
+   separation). The token is write-only in this UI: it is sent on Save
+   and never read back — the input only ever shows a placeholder. */
+let plexDirty = false; // user edited the Plex card: don't clobber on refresh
+["plx-url","plx-token","plx-maps"].forEach(id => $(id).addEventListener("input", () => { plexDirty = true; }));
+
+// renderMappingRows builds the from→to editor rows from a mappings list.
+function renderMappingRows(mappings){
+  $("plx-maps").innerHTML = (mappings || []).map(m =>
+    '<div style="display:flex;gap:6px;margin-bottom:6px">' +
+    '<input class="map-from" style="flex:1" placeholder="/server/path" value="' + esc(m.from) + '">' +
+    '<span style="align-self:center;color:var(--faint)">→</span>' +
+    '<input class="map-to" style="flex:1" placeholder="/local/path" value="' + esc(m.to) + '">' +
+    '<button class="small danger map-del" type="button">✕</button></div>'
+  ).join("");
+  document.querySelectorAll(".map-del").forEach(b => b.addEventListener("click", () => { plexDirty = true; b.parentElement.remove(); }));
+}
+$("btn-plx-map-add").addEventListener("click", () => {
+  renderMappingRows(collectMappings().concat([{from:"", to:""}]));
+  plexDirty = true;
+});
+// collectMappings reads the editor rows into [{from,to}], skipping blanks.
+function collectMappings(){
+  const froms = document.querySelectorAll(".map-from"), tos = document.querySelectorAll(".map-to");
+  const out = [];
+  froms.forEach((f, i) => { const from = f.value.trim(), to = (tos[i].value || "").trim(); if (from && to) out.push({from, to}); });
+  return out;
+}
+// refreshPlexSettings populates the Plex card from the token-free view.
+async function refreshPlexSettings(){
+  if (plexDirty) return;
+  let view; try{ view = await api.plexSettings(); }catch(e){ return; }
+  $("plx-url").value = view.url || "";
+  $("plx-token").value = "";
+  $("plx-token").placeholder = view.configured ? "token saved — leave blank to keep" : "paste your Plex token";
+  renderMappingRows(view.mappings || []);
+  renderPlexPrimary(view);
+}
+
+/* ----- Sign-in block (v0.3.1, primary connection method;
+   approval-link flow corrected v0.3.2) -----
+   The block at the top of the Plex card is rendered from the
+   connection state: a Sign in button when unconfigured, the
+   approval prompt + server picker while a sign-in runs, and the
+   connected line when configured. renderPlexPrimary is skipped
+   while a flow is on screen so state polling never clobbers it. */
+let signinFlow = null; // {session, timer, servers} while signing in
+let switchFlow = null; // {servers, remembered} while switching servers
+
+// renderPlexPrimary paints the block for a settled connection state.
+function renderPlexPrimary(view){
+  if (signinFlow || switchFlow) return; // a flow owns the block right now
+  const box = $("plx-primary");
+  if (view.configured){
+    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid #1f4d33;border-radius:10px;padding:10px 12px;background:#0f2418">' +
+      '<span style="color:var(--green)">Connected ✓ — <b>' + esc(view.server_name || view.url) + "</b></span>" +
+      (view.server_name ? '<span class="dim small mono">' + esc(view.url) + "</span>" : "") +
+      '<span style="flex:1"></span>' +
+      (view.can_switch ? '<button class="small" id="btn-plx-change" type="button">Change server…</button>' : "") +
+      '<button class="small" id="btn-plx-again" type="button">Sign in again</button>' +
+      '<button class="small danger" id="btn-plx-disc" type="button">Disconnect</button></div>';
+    if ($("btn-plx-change")) $("btn-plx-change").addEventListener("click", startServerSwitch);
+    $("btn-plx-again").addEventListener("click", startSignIn);
+    $("btn-plx-disc").addEventListener("click", () => $("btn-plx-clear").click());
+  } else {
+    box.innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)">' +
+      '<button class="primary" id="btn-plx-signin" type="button">Sign in with Plex</button>' +
+      '<span class="dim small" style="margin-left:10px">Approve on Plex\'s own page — no token hunting.</span></div>';
+    $("btn-plx-signin").addEventListener("click", startSignIn);
+  }
+}
+
+// refreshPlexPrimary re-renders the block from a fresh settings view.
+async function refreshPlexPrimary(){
+  if (signinFlow || switchFlow) return;
+  let view; try{ view = await api.plexSettings(); }catch(e){ return; }
+  renderPlexPrimary(view);
+}
+
+// stopSignInPoll halts the poll timer (flow continues or ends).
+function stopSignInPoll(){
+  if (signinFlow && signinFlow.timer){ clearInterval(signinFlow.timer); signinFlow.timer = null; }
+}
+
+// showSignInMessage paints a terminal sign-in message (expired or
+// failed) with a restart button.
+function showSignInMessage(html){
+  signinFlow = null;
+  $("plx-primary").innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)">' +
+    html + '<div style="margin-top:10px"><button class="small primary" id="btn-si-restart" type="button">Start sign-in again</button></div></div>';
+  $("btn-si-restart").addEventListener("click", startSignIn);
+}
+
+// startSignIn begins a PIN sign-in: the backend mints a PIN and
+// returns an approval URL for Plex's own hosted auth page (the
+// the PIN code rides inside the link
+// and is never displayed or typed). We render the link as a
+// prominent button, then poll until plex.tv reports approval.
+async function startSignIn(){
+  stopSignInPoll();
+  signinFlow = {session: "", timer: null, servers: []};
+  const box = $("plx-primary");
+  box.innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)"><span class="dim">Contacting plex.tv…</span></div>';
+  let r;
+  try{ r = await api.signinBegin(); }
+  catch(e){ showSignInMessage('<span style="color:var(--red)">' + esc(e.message) + "</span>"); return; }
+  signinFlow.session = r.session;
+  box.innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--panel2)">' +
+    '<div style="max-width:560px">You\'ll approve this sign-in on Plex\'s own page — you\'re already signed in there, it\'s one click. Then come back here.</div>' +
+    '<div style="margin:12px 0"><a class="btn-primary" href="' + esc(r.auth_url) + '" target="_blank" rel="noopener">Approve on Plex ↗</a></div>' +
+    '<div class="dim small">Waiting for approval… (the sign-in expires in about 10 minutes)</div>' +
+    '<div style="margin-top:10px"><button class="small" id="btn-si-cancel" type="button">Cancel</button></div></div>';
+  $("btn-si-cancel").addEventListener("click", () => { stopSignInPoll(); signinFlow = null; refreshPlexPrimary(); });
+  signinFlow.timer = setInterval(pollSignIn, 2500);
+  pollSignIn();
+}
+
+// pollSignIn checks the session once: pending keeps waiting, ready
+// shows the server picker, expired/error end the flow with a
+// restart affordance.
+async function pollSignIn(){
+  if (!signinFlow || !signinFlow.session) return;
+  let r;
+  try{ r = await api.signinPoll(signinFlow.session); }
+  catch(e){ stopSignInPoll(); showSignInMessage('<span style="color:var(--red)">' + esc(e.message) + "</span>"); return; }
+  if (r.status === "ready"){ stopSignInPoll(); signinFlow.servers = r.servers || []; showSignInServers(""); }
+  else if (r.status === "expired"){ stopSignInPoll(); showSignInMessage('<span style="color:var(--amber2)">Sign-in expired — approvals only live a few minutes. Start again for a fresh link.</span>'); }
+  else if (r.status === "error"){ stopSignInPoll(); showSignInMessage('<span style="color:var(--red)">' + esc(r.error || "sign-in failed") + "</span>"); }
+  // "pending": keep waiting — the timer fires again in 2.5s.
+}
+
+// showSignInServers paints the discovered-server picker; errHTML
+// (from a failed Connect) is shown above the list.
+function showSignInServers(errHTML){
+  const servers = (signinFlow && signinFlow.servers) || [];
+  $("plx-primary").innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)">' +
+    (errHTML || "") + '<div style="margin-bottom:8px"><b>Signed in ✓ — pick your server:</b></div>' +
+    (servers.length ? servers.map(sv =>
+      '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)">' +
+      "<span><b>" + esc(sv.name) + '</b> <span class="dim small">' + sv.connections + " connection" + (sv.connections === 1 ? "" : "s") + "</span></span>" +
+      '<span style="flex:1"></span>' +
+      '<button class="small primary si-connect" data-idx="' + sv.index + '" type="button">Connect</button></div>'
+    ).join("") : '<div class="dim small">plex.tv reported no servers on this account.</div>') +
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;max-width:640px"><input type="checkbox" id="si-remember" style="margin-top:2px"><span>Remember my sign-in on this device — lets me switch servers later without signing in again (stores my Plex account token in the app\'s settings file)</span></label>' +
+    '<div style="margin-top:10px"><button class="small" id="btn-si-cancel2" type="button">Cancel</button></div></div>';
+  document.querySelectorAll(".si-connect").forEach(b => b.addEventListener("click", () => chooseSignInServer(parseInt(b.dataset.idx, 10))));
+  $("btn-si-cancel2").addEventListener("click", () => { signinFlow = null; refreshPlexPrimary(); });
+}
+
+// chooseSignInServer connects the app to the picked server. On
+// success the connected line replaces the picker; on failure the
+// picker stays, with the error above it.
+async function chooseSignInServer(idx){
+  if (!signinFlow) return;
+  document.querySelectorAll(".si-connect").forEach(b => { b.disabled = true; b.textContent = "Connecting…"; });
+  const remember = !!($("si-remember") && $("si-remember").checked);
+  try{
+    const r = await api.signinChoose(signinFlow.session, idx, remember);
+    if (r.ok){
+      signinFlow = null;
+      refreshPlexPrimary(); refreshPlexSettings(); refreshState();
+    } else {
+      showSignInServers('<div class="small" style="color:var(--red);margin-bottom:8px">' + esc(r.error || "could not connect to that server") + "</div>");
+    }
+  }catch(e){ showSignInServers('<div class="small" style="color:var(--red);margin-bottom:8px">' + esc(e.message) + "</div>"); }
+}
+
+/* ----- Server switching (retained/remembered sign-in) -----
+   "Change server…" on the connected line opens this picker: the
+   account's servers, fetched fresh from the retained (or
+   remembered) sign-in — no fresh sign-in. switchFlow owns the
+   plx-primary block while the picker is up, exactly like
+   signinFlow, so state polling never clobbers it. */
+
+// startServerSwitch fetches the account's server list and shows
+// the switch picker. When no sign-in is available, the backend's
+// explanation is shown inline, with a way back.
+async function startServerSwitch(){
+  const box = $("plx-primary");
+  box.innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)"><span class="dim">Loading your servers…</span></div>';
+  let r;
+  try{ r = await api.plexServers(); }
+  catch(e){ r = {available: false, error: e.message}; }
+  if (!r.available){
+    box.innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)">' +
+      '<span style="color:var(--red)">' + esc(r.error || "server list unavailable") + "</span>" +
+      '<div style="margin-top:10px"><button class="small" id="btn-sw-back" type="button">Back</button></div></div>';
+    $("btn-sw-back").addEventListener("click", () => refreshPlexPrimary());
+    return;
+  }
+  switchFlow = {servers: r.servers || [], remembered: !!r.remembered};
+  showSwitchServers("");
+}
+
+// showSwitchServers paints the switch picker; errHTML (from a
+// failed Switch) is shown above the list. The remember checkbox
+// mirrors the sign-in picker's and starts from the saved state;
+// the Forget button appears when a sign-in is saved on this
+// device.
+function showSwitchServers(errHTML){
+  const servers = (switchFlow && switchFlow.servers) || [];
+  const remembered = !!(switchFlow && switchFlow.remembered);
+  $("plx-primary").innerHTML = '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)">' +
+    (errHTML || "") + '<div style="margin-bottom:8px"><b>Switch server — pick the Plex server to connect:</b></div>' +
+    (servers.length ? servers.map(sv =>
+      '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)">' +
+      "<span><b>" + esc(sv.name) + '</b> <span class="dim small">' + sv.connections + " connection" + (sv.connections === 1 ? "" : "s") + "</span></span>" +
+      '<span style="flex:1"></span>' +
+      '<button class="small primary sw-connect" data-idx="' + sv.index + '" type="button">Switch</button></div>'
+    ).join("") : '<div class="dim small">plex.tv reported no servers on this account.</div>') +
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;max-width:640px"><input type="checkbox" id="sw-remember" style="margin-top:2px"' + (remembered ? " checked" : "") + '><span>Remember my sign-in on this device — lets me switch servers later without signing in again (stores my Plex account token in the app\'s settings file)</span></label>' +
+    '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="small" id="btn-sw-cancel" type="button">Cancel</button>' +
+    (remembered ? '<button class="small danger" id="btn-sw-forget" type="button">Forget saved sign-in</button>' : "") + "</div></div>";
+  document.querySelectorAll(".sw-connect").forEach(b => b.addEventListener("click", () => switchToServer(parseInt(b.dataset.idx, 10))));
+  $("btn-sw-cancel").addEventListener("click", () => { switchFlow = null; refreshPlexPrimary(); });
+  if ($("btn-sw-forget")) $("btn-sw-forget").addEventListener("click", forgetSavedSignIn);
+}
+
+// switchToServer connects the picked server. The remember
+// checkbox is sent only when it differs from the saved state, so
+// an untouched checkbox leaves the persisted sign-in exactly as
+// it was.
+async function switchToServer(idx){
+  if (!switchFlow) return;
+  document.querySelectorAll(".sw-connect").forEach(b => { b.disabled = true; b.textContent = "Switching…"; });
+  const box = $("sw-remember");
+  const remember = box && box.checked !== switchFlow.remembered ? box.checked : null;
+  try{
+    const r = await api.plexSwitch(idx, remember);
+    if (r.ok){
+      switchFlow = null;
+      refreshPlexPrimary(); refreshPlexSettings(); refreshState();
+    } else {
+      showSwitchServers('<div class="small" style="color:var(--red);margin-bottom:8px">' + esc(r.error || "could not switch to that server") + "</div>");
+    }
+  }catch(e){ showSwitchServers('<div class="small" style="color:var(--red);margin-bottom:8px">' + esc(e.message) + "</div>"); }
+}
+
+// forgetSavedSignIn clears the saved account sign-in (persisted +
+// retained) — the connected server stays connected; the picker
+// closes because switching is no longer available.
+async function forgetSavedSignIn(){
+  if (!confirm("Forget the saved Plex sign-in on this device? The connected server stays connected, but switching servers will need a fresh sign-in.")) return;
+  try{
+    await api.plexForget();
+    switchFlow = null;
+    refreshPlexPrimary(); refreshPlexSettings(); refreshState();
+  }catch(e){ alert(e.message); }
+}
+
+// gotoPlexSettings switches to the Settings tab and flashes the
+// Plex card — used by the not-connected explainers on the Import
+// and cross-check buttons so "connect Plex first" is one click,
+// not a treasure hunt.
+function gotoPlexSettings(){
+  document.querySelector('#tabs button[data-tab="settings"]').click();
+  const card = $("plex-card");
+  card.scrollIntoView({behavior: "smooth", block: "start"});
+  card.style.outline = "2px solid var(--amber)";
+  card.style.outlineOffset = "4px";
+  setTimeout(() => { card.style.outline = ""; card.style.outlineOffset = ""; }, 1800);
+}
+
+$("btn-plx-save").addEventListener("click", async () => {
+  try{
+    const view = await api.savePlexSettings($("plx-url").value.trim(), $("plx-token").value, collectMappings());
+    plexDirty = false;
+    if (!view.configured){
+      $("plx-result").innerHTML = '<span style="color:var(--amber2)">Saved — but a URL and a token are both needed before Plex features turn on.</span>';
+    } else {
+      // v0.3.1: Save auto-tests — one click, immediate truth about
+      // whether the just-saved values actually connect.
+      $("plx-result").innerHTML = '<span style="color:var(--green)">Saved ✓</span> <span class="dim">— testing the connection…</span>';
+      refreshPlexSettings(); refreshState();
+      const r = await api.testPlex("", "");
+      $("plx-result").innerHTML = r.ok
+        ? '<span style="color:var(--green)">Saved ✓ · Connected ✓ — ' + esc(r.server_name || "Plex server") + (r.version ? " · version " + esc(r.version) : "") + "</span>"
+        : '<span style="color:var(--green)">Saved ✓</span> <span style="color:var(--red)">— but the connection test failed: ' + esc(r.error || "unknown error") + "</span>";
+    }
+    refreshPlexSettings(); refreshState();
+  }catch(e){ $("plx-result").innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>"; }
+});
+$("btn-plx-test").addEventListener("click", async () => {
+  $("plx-result").textContent = "Testing…";
+  try{
+    // v0.3.1: test WHAT'S TYPED in the form, not only what's saved.
+    const r = await api.testPlex($("plx-url").value.trim(), $("plx-token").value);
+    $("plx-result").innerHTML = r.ok
+      ? '<span style="color:var(--green)">Connected ✓ — ' + esc(r.server_name || "Plex server") + (r.version ? " · version " + esc(r.version) : "") + "</span>"
+      : '<span style="color:var(--red)">' + esc(r.error || "test failed") + "</span>";
+  }catch(e){ $("plx-result").innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>"; }
+});
+$("btn-plx-clear").addEventListener("click", async () => {
+  if (!confirm("Clear the saved Plex URL, token, path mappings, and saved sign-in? The file tools are unaffected.")) return;
+  try{
+    await api.savePlexSettings("__clear__", "", null);
+    plexDirty = false; $("plx-result").textContent = "Plex settings cleared.";
+    refreshPlexSettings(); refreshState();
+  }catch(e){ alert(e.message); }
+});
+
+/* ----- Import roots panel ----- */
+$("btn-import").addEventListener("click", async () => {
+  const panel = $("import-panel");
+  if (panel.style.display !== "none"){ panel.style.display = "none"; return; }
+  panel.style.display = "block";
+  // v0.3.1: never a dead button — when Plex isn't connected, say
+  // so right here and offer the one-click jump to the Plex card.
+  let view = null;
+  try{ view = await api.plexSettings(); }catch(e){ /* treated as not connected below */ }
+  if (!view || !view.configured){
+    panel.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">' +
+      '<span>Plex isn\'t connected yet — sign in with Plex in <b>Settings → Plex</b> (or add your server URL and token there and click Save), then come back.</span>' +
+      '<span style="flex:1"></span>' +
+      '<button class="small primary" id="imp-goto" type="button">Open Plex settings</button>' +
+      '<button class="small" id="imp-dismiss" type="button">Close</button></div>';
+    $("imp-goto").addEventListener("click", () => { panel.style.display = "none"; gotoPlexSettings(); });
+    $("imp-dismiss").addEventListener("click", () => { panel.style.display = "none"; });
+    return;
+  }
+  panel.innerHTML = '<span class="dim">Fetching libraries from Plex…</span>';
+  let data;
+  try{ data = await api.plexSections(); }
+  catch(e){ panel.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + '</span>'; return; }
+  const secs = data.sections || [];
+  if (!secs.length){ panel.innerHTML = '<span class="dim">Plex reported no libraries.</span>'; return; }
+  panel.innerHTML =
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><b>Import roots from Plex</b>' +
+    '<span style="flex:1"></span>' +
+    '<button class="small" id="imp-all" type="button">Select all</button>' +
+    '<button class="small" id="imp-none" type="button">Select none</button>' +
+    '<button class="small primary" id="imp-use" type="button">Use selected roots</button>' +
+    '<button class="small" id="imp-close" type="button">Close</button></div>' +
+    secs.map(sec => {
+      const media = sec.type === "movie" || sec.type === "show";
+      const locs = (sec.locations || []).map(l =>
+        '<label style="display:flex;gap:8px;align-items:flex-start;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text);margin:4px 0">' +
+        '<input type="checkbox" class="imp-loc" value="' + esc(l.path) + '"' + ((l.valid && media) ? " checked" : " disabled") + ' style="margin-top:3px">' +
+        '<span><span class="mono">' + esc(l.path) + "</span>" +
+        (l.server_path !== l.path ? '<div class="small dim">server path: <span class="mono">' + esc(l.server_path) + "</span></div>" : "") +
+        (!l.valid ? '<div class="small" style="color:var(--red)">' + esc(l.problem || "not usable on this machine") + (media ? " — add a path mapping in Settings if Plex lives elsewhere" : "") + "</div>" : "") +
+        "</span></label>").join("");
+      return '<div style="margin-bottom:10px;' + (media ? "" : "opacity:.55") + '"><b>' + esc(sec.title) + '</b> ' +
+        '<span class="badge ' + (media ? "b-blue" : "b-dim") + '">' + esc(sec.type) + "</span>" +
+        (media ? "" : ' <span class="small dim">file import applies to movie/TV libraries only</span>') +
+        (locs || '<div class="small dim">no folder locations reported</div>') + "</div>";
+    }).join("");
+  $("imp-close").addEventListener("click", () => { panel.style.display = "none"; });
+  $("imp-all").addEventListener("click", () => document.querySelectorAll(".imp-loc:not(:disabled)").forEach(c => { c.checked = true; }));
+  $("imp-none").addEventListener("click", () => document.querySelectorAll(".imp-loc").forEach(c => { c.checked = false; }));
+  $("imp-use").addEventListener("click", () => {
+    const chosen = Array.from(document.querySelectorAll(".imp-loc:checked")).map(c => c.value);
+    if (!chosen.length){ alert("No locations selected."); return; }
+    $("roots").value = chosen.join("\n");
+    rootsDirty = true; // imported roots are user input now: polling must not clobber them
+    panel.style.display = "none";
+    $("roots").scrollIntoView({behavior:"smooth", block:"center"});
+  });
+});
+
+/* ----- Plex missing-on-disk cross-check ----- */
+$("btn-missing").addEventListener("click", async () => {
+  const st = $("missing-status"), box = $("missing-result");
+  // v0.3.1: same never-a-brick rule as the Import button — explain
+  // instead of sitting disabled.
+  let view = null;
+  try{ view = await api.plexSettings(); }catch(e){ /* treated as not connected below */ }
+  if (!view || !view.configured){
+    st.innerHTML = '<span style="color:var(--amber2)">Plex isn\'t connected yet — sign in with Plex in Settings → Plex (or add your server URL and token there and click Save), then come back.</span>';
+    return;
+  }
+  st.textContent = "Asking Plex for its file list and checking the disk… (big libraries take a moment)";
+  box.innerHTML = "";
+  try{
+    const r = await api.plexMissing();
+    st.textContent = "";
+    const missing = r.missing || [];
+    box.innerHTML =
+      '<div class="small" style="margin-bottom:8px">Checked <b>' + (r.checked || 0) + "</b> file(s) Plex knows about — <b style='color:" +
+      (missing.length ? "var(--red)" : "var(--green)") + "'>" + missing.length + " missing on disk</b>.</div>" +
+      ((r.warnings || []).length ? '<div class="small" style="color:var(--amber2)">' + r.warnings.map(esc).join("<br>") + "</div>" : "") +
+      (missing.length ?
+        "<table><thead><tr><th>Item</th><th>Library</th><th>Expected path (this machine)</th><th>Server path</th></tr></thead><tbody>" +
+        missing.map(m => "<tr><td>" + esc(m.title) + '</td><td>' + esc(m.section) + '</td><td class="mono dim">' + esc(m.file) + '</td><td class="mono dim">' + esc(m.server_file) + "</td></tr>").join("") +
+        "</tbody></table>" : "");
+  }catch(e){ st.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>"; }
+});
+
+/* ================= Organize (v0.3.0) =================
+   Preview -> Apply -> Undo, all through api.* (transport separation).
+   The plan the user reviews is held server-side by ID; Apply executes
+   exactly that plan (re-validated server-side against the live tree),
+   and every applied organize leaves an undo manifest on disk. */
+let orgPlan = null;     // the last previewed plan (or null)
+let orgManifestID = ""; // manifest produced by this session's last Apply
+
+$("org-root-pick").addEventListener("change", () => {
+  const v = $("org-root-pick").value;
+  if (v) $("org-root").value = v;
+});
+$("btn-org-preview").addEventListener("click", previewOrganize);
+
+// previewOrganize asks the backend for a dry-run plan and renders it.
+async function previewOrganize(){
+  const root = $("org-root").value.trim();
+  const box = $("org-plan");
+  if (!root){ box.innerHTML = '<p style="color:var(--red)">Enter a folder first.</p>'; return; }
+  box.innerHTML = '<p class="dim">Building the plan… (reading the folder — moving nothing)</p>';
+  try{
+    orgPlan = await api.organizePlan(root);
+    orgManifestID = "";
+    renderOrganizePlan("");
+  }catch(e){
+    orgPlan = null;
+    box.innerHTML = '<p style="color:var(--red)">' + esc(e.message) + "</p>";
+  }
+}
+
+// orgRel renders a path relative to the plan root for readability.
+function orgRel(p){
+  if (orgPlan && orgPlan.root && p.indexOf(orgPlan.root) === 0)
+    return p.slice(orgPlan.root.length).replace(/^[\\/]+/, "") || ".";
+  return p;
+}
+
+// renderOrganizePlan paints the current plan: summary chips, then
+// Moves, Collisions, Couldn't identify, Skipped (empty sections are
+// omitted), the already-organized list, and the Apply / Undo row.
+// resultHTML is the status line shown next to the Apply button.
+function renderOrganizePlan(resultHTML){
+  const box = $("org-plan");
+  if (!orgPlan){ box.innerHTML = ""; return; }
+  const p = orgPlan, st = p.stats || {};
+  let h = '<div class="chips" style="margin:14px 0 4px">' +
+    '<span class="chip">To move <b>' + (st.total_moves||0) + "</b> — " + (st.movies||0) + " movies · " + (st.episodes||0) + " episodes · " + ((st.sidecars||0)+(st.artwork||0)) + " sidecars/artwork</span>" +
+    '<span class="chip">Already organized <b>' + (st.already_organized||0) + "</b></span>" +
+    '<span class="chip warn">Couldn\'t identify <b>' + (st.unidentified||0) + "</b></span>" +
+    '<span class="chip warn">Collisions <b>' + (st.collisions||0) + "</b></span>" +
+    '<span class="chip">Skipped <b>' + (st.skipped||0) + "</b></span></div>";
+  if ((p.moves||[]).length){
+    h += '<h3 style="margin:14px 0 6px">Moves</h3><div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>From</th><th></th><th>To</th></tr></thead><tbody>' +
+      p.moves.map(m => '<tr><td><span class="badge b-blue">' + esc(m.kind) + '</span></td><td class="mono dim">' + esc(orgRel(m.from)) + '</td><td>→</td><td class="mono">' + esc(orgRel(m.to)) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.collisions||[]).length){
+    h += '<h3 style="margin:16px 0 6px;color:var(--red)">Collisions — these do NOT move</h3><div style="overflow-x:auto"><table><thead><tr><th>Would land on</th><th>From</th><th>Reason</th></tr></thead><tbody>' +
+      p.collisions.map(c => (c.sources||[]).map((s, i) =>
+        '<tr style="background:#2a1518"><td class="mono">' + (i === 0 ? esc(orgRel(c.target)) : "") + '</td><td class="mono dim">' + esc(orgRel(s)) + '</td><td class="small">' + (i === 0 ? esc(c.reason) : "") + "</td></tr>").join("")).join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.unidentified||[]).length){
+    h += '<h3 style="margin:16px 0 6px">Couldn\'t identify — left exactly where they are</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+      p.unidentified.map(u => '<tr><td class="mono dim">' + esc(orgRel(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.skipped||[]).length){
+    h += '<h3 style="margin:16px 0 6px">Skipped</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+      p.skipped.map(u => '<tr><td class="mono dim">' + esc(orgRel(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  if ((p.already_organized||[]).length){
+    h += '<p class="dim small" style="margin-top:14px">Already in Jellyfin layout (' + p.already_organized.length + "): " +
+      p.already_organized.map(x => '<span class="mono">' + esc(orgRel(x)) + "</span>").join(" · ") + "</p>";
+  }
+  const n = (p.moves||[]).length;
+  h += '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
+    '<button class="primary" id="btn-org-apply"' + (n ? "" : " disabled") + ">Apply " + n + " moves</button>" +
+    (orgManifestID ? '<button class="danger" id="btn-org-undo-last">Undo this organize</button>' : "") +
+    '<span class="small" id="org-apply-result">' + (resultHTML || "") + "</span></div>";
+  box.innerHTML = h;
+  const applyBtn = $("btn-org-apply");
+  if (applyBtn) applyBtn.addEventListener("click", applyOrganize);
+  const undoBtn = $("btn-org-undo-last");
+  if (undoBtn) undoBtn.addEventListener("click", () => undoOrganize(orgManifestID));
+}
+
+// applyOrganize executes the previewed plan and reports the outcome
+// in the plan view (the three shapes: gate rejection = nothing moved;
+// mid-apply stop = partial, undoable; clean = all applied).
+async function applyOrganize(){
+  if (!orgPlan) return;
+  const btn = $("btn-org-apply");
+  if (btn){ btn.disabled = true; btn.textContent = "Applying…"; }
+  try{
+    const res = await api.organizeApply(orgPlan.id);
+    if (res.manifest_id) orgManifestID = res.manifest_id;
+    const failed = res.failed || [];
+    let msg;
+    if (failed.length && res.applied === 0 && !res.manifest_id){
+      msg = '<span style="color:var(--red)">Nothing was moved — the folder changed since the preview:</span><br>' +
+        failed.map(f => esc(orgRel(f.path)) + " — " + esc(f.error)).join("<br>") +
+        '<br>Preview again to get a fresh plan.';
+    } else if (failed.length){
+      msg = '<span style="color:var(--amber2)">Applied ' + res.applied + ' move(s), then stopped:</span><br>' +
+        failed.map(f => esc(orgRel(f.path)) + " — " + esc(f.error)).join("<br>") +
+        '<br>The moves that landed can be undone with the button here or in Past organizes.';
+    } else {
+      msg = '<span style="color:var(--green)">Applied ' + res.applied + ' move(s) ✓</span>' +
+        (res.empty_dirs_left ? ' · ' + res.empty_dirs_left + " empty folder(s) left in place (folders are never deleted)" : "");
+    }
+    renderOrganizePlan(msg);
+    refreshOrganizeManifests();
+  }catch(e){
+    renderOrganizePlan('<span style="color:var(--red)">' + esc(e.message) + "</span>");
+  }
+}
+
+// undoOrganize reverses one manifest (from this session's Apply or
+// from the Past organizes list) after a confirm.
+async function undoOrganize(mid){
+  if (!mid) return;
+  if (!confirm("Undo this organize? Files go back to their exact original paths.")) return;
+  try{
+    const res = await api.organizeUndo(mid);
+    let msg = '<span style="color:var(--green)">Restored ' + res.restored + " file(s) ✓</span>";
+    if ((res.failed||[]).length)
+      msg += '<br><span style="color:var(--red)">' + res.failed.map(f => esc(f.path) + " — " + esc(f.error)).join("<br>") + "</span>";
+    if (mid === orgManifestID) orgManifestID = "";
+    if (orgPlan) renderOrganizePlan(msg);
+    else $("org-plan").innerHTML = '<p class="small">' + msg + "</p>";
+    refreshOrganizeManifests();
+  }catch(e){ alert(e.message); }
+}
+
+// refreshOrganizeManifests paints the Past organizes list.
+async function refreshOrganizeManifests(){
+  let data; try{ data = await api.organizeManifests(); }catch(e){ return; }
+  const list = data.manifests || [];
+  $("org-manifests-empty").style.display = list.length ? "none" : "block";
+  $("org-manifests").innerHTML = list.length ?
+    "<table><thead><tr><th>Date (UTC)</th><th>Folder</th><th>Moves</th><th>Status</th><th></th></tr></thead><tbody>" +
+    list.map(m => "<tr><td class='small'>" + esc((m.created_at||"").replace("T"," ").replace("Z","")) + "</td>" +
+      '<td class="mono dim">' + esc(m.root) + "</td><td>" + m.moves + "</td>" +
+      "<td>" + (m.undone ? '<span class="badge b-dim">undone</span>' : '<span class="badge b-green">applied</span>') + "</td>" +
+      "<td>" + (m.undone ? "" : '<button class="small danger org-undo" data-mid="' + esc(m.id) + '">Undo</button>') + "</td></tr>").join("") +
+    "</tbody></table>" : "";
+  document.querySelectorAll(".org-undo").forEach(b => b.addEventListener("click", () => undoOrganize(b.dataset.mid)));
+}
+
+/* ================= Boot ================= */
+async function refreshAll(){
+  try{ await Promise.all([refreshLibrary(), refreshSubtitles(), refreshDuplicates(), refreshHealth(), refreshSettings(), refreshOrganizeManifests()]); }
+  catch(e){ /* backend not up yet */ }
+  refreshState();
+}
+refreshAll();
+startPolling();
+</script>
+</body>
+</html>

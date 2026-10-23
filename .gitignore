@@ -1,0 +1,5 @@
+/plex-file-manager
+/plex-file-manager-arm64
+/plex-file-manager.exe
+*.log
+/data/

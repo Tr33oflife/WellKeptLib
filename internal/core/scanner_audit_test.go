@@ -1,0 +1,200 @@
+package core
+
+// scanner_audit_test.go — tests for the v0.3.4 scan pipeline:
+// library results are assembled and published BEFORE the
+// embedded-subtitle audit; the audit's findings are cached with
+// the probe (keyed by the same path+size+mtime fingerprint) so
+// an unchanged file is never re-extracted; and the drive
+// keep-alive goroutine starts and stops with the scan.
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+	"time"
+)
+
+// copyFixtureLibrary copies the generated fixture library into a
+// fresh temp dir and returns its root. Tests copy rather than
+// scan the shared fixtures in place: the fingerprint test below
+// mutates one file's mtime, and the shared corpus must stay
+// pristine for every other check.
+func copyFixtureLibrary(t *testing.T) string {
+	t.Helper()
+	src := filepath.Join("..", "..", "..", "fixtures", "library")
+	dst := filepath.Join(t.TempDir(), "library")
+	err := filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o644)
+	})
+	if err != nil {
+		t.Fatalf("copy fixtures: %v", err)
+	}
+	return dst
+}
+
+// runScanToCompletion starts a scan and polls state until it
+// finishes (or the test deadline passes).
+func runScanToCompletion(t *testing.T, svc *Service, roots []string) {
+	t.Helper()
+	if _, err := svc.StartScan(roots); err != nil {
+		t.Fatalf("StartScan: %v", err)
+	}
+	deadline := time.Now().Add(180 * time.Second)
+	for time.Now().Before(deadline) {
+		if !svc.State().Scan.Running {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("scan did not finish within 180s")
+}
+
+// TestScanFixtureBaselineCounts: the restructured pipeline's
+// FINAL results on the standard fixtures must equal the v0.3.3
+// baseline exactly — 11 media / 2 duplicate groups / 2 subtitle
+// findings (1 external + 1 embedded) / 6 health — with the audit
+// flag cleared at the end. Uses the real ffprobe/ffmpeg, like the
+// shipped app (the fixture corpus is generated for them).
+func TestScanFixtureBaselineCounts(t *testing.T) {
+	lib := copyFixtureLibrary(t)
+	svc, err := NewService(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+	runScanToCompletion(t, svc, []string{lib})
+	st := svc.State()
+	if st.Scan.AuditPending {
+		t.Error("AuditPending still set after a completed scan")
+	}
+	sum := st.Scan.Summary
+	if sum.MediaCount != 11 || sum.DuplicateGroups != 2 || sum.SubtitleFindings != 2 || sum.HealthFindings != 6 {
+		t.Errorf("final summary = media %d, dup groups %d, subtitle findings %d, health %d; want 11/2/2/6",
+			sum.MediaCount, sum.DuplicateGroups, sum.SubtitleFindings, sum.HealthFindings)
+	}
+	// The 2 subtitle findings are one external (the mislabeled
+	// Spanish file) and one embedded (the French track tagged eng).
+	var external, embedded int
+	for _, f := range svc.Subtitles() {
+		switch f.Source {
+		case "external":
+			external++
+		case "embedded":
+			embedded++
+		}
+	}
+	if external != 1 || embedded != 1 {
+		t.Errorf("subtitle findings by source = %d external, %d embedded; want 1 + 1", external, embedded)
+	}
+}
+
+// TestAuditCacheReuseAcrossScans: extraction happens once per
+// file fingerprint — never once per scan. A stub extractor
+// counts calls and returns French text (matching the fixture
+// corpus: the one embedded track is French tagged eng, so an
+// audit produces a mismatch finding to compare across scans).
+func TestAuditCacheReuseAcrossScans(t *testing.T) {
+	lib := copyFixtureLibrary(t)
+	svc, err := NewService(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
+
+	calls := 0
+	orig := extractEmbeddedSubtitleFn
+	extractEmbeddedSubtitleFn = func(ctx context.Context, ffmpegPath, mediaPath string, streamIndex, sampleSec, timeoutSec int) ([]string, error) {
+		calls++
+		return []string{
+			"Bonjour mon ami, ceci est une histoire de la famille et de la maison",
+			"Le chat et le chien sont dans le jardin avec les enfants de la ville",
+			"Nous allons au marche le matin pour acheter du pain et du fromage",
+		}, nil
+	}
+	defer func() { extractEmbeddedSubtitleFn = orig }()
+
+	// Scan 1: the fixture library has exactly one embedded text
+	// track (Embedded Case), so exactly one extraction.
+	runScanToCompletion(t, svc, []string{lib})
+	if calls != 1 {
+		t.Fatalf("scan 1 extractor calls = %d, want 1 (one embedded text track in the corpus)", calls)
+	}
+	first := svc.Subtitles()
+	if len(first) != 2 {
+		t.Fatalf("scan 1 subtitle findings = %d, want 2 (1 external + 1 embedded)", len(first))
+	}
+
+	// Scan 2: probe AND audit both cached — ZERO new extractions,
+	// and the findings are identical, embedded included.
+	runScanToCompletion(t, svc, []string{lib})
+	if calls != 1 {
+		t.Fatalf("scan 2 extractor calls = %d total, want still 1 (cached audit reused, zero extractions)", calls)
+	}
+	second := svc.Subtitles()
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("scan 2 findings differ from scan 1:\nfirst:  %+v\nsecond: %+v", first, second)
+	}
+
+	// Fingerprint change on ONE file (mtime touch): that file —
+	// and only that file — is re-audited on scan 3.
+	embeddedPath := filepath.Join(lib, "Movies", "Embedded Case (2021)", "Embedded Case (2021).mkv")
+	later := time.Now().Add(2 * time.Hour)
+	if err := os.Chtimes(embeddedPath, later, later); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	runScanToCompletion(t, svc, []string{lib})
+	if calls != 2 {
+		t.Fatalf("scan 3 extractor calls = %d total, want 2 (only the touched file re-audited)", calls)
+	}
+	third := svc.Subtitles()
+	if !reflect.DeepEqual(first, third) {
+		t.Errorf("scan 3 findings differ from scan 1:\nfirst: %+v\nthird: %+v", first, third)
+	}
+}
+
+// TestDriveKeepAliveLifecycle: the keep-alive stops promptly via
+// its stop function (idempotently), and the scan context ending
+// also ends the goroutine — stop after cancel still returns, so
+// the goroutine provably cannot leak past either path.
+func TestDriveKeepAliveLifecycle(t *testing.T) {
+	root := t.TempDir()
+
+	awaitStop := func(name string, stop func()) {
+		t.Helper()
+		done := make(chan struct{})
+		go func() { stop(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s: keep-alive stop did not return (goroutine leak?)", name)
+		}
+	}
+
+	// Stop-function path.
+	stop := startDriveKeepAlive(context.Background(), []string{root})
+	awaitStop("stop function", stop)
+	stop() // second call must neither panic nor block
+
+	// Context-cancel path: the loop exits on its own; the stop
+	// function afterwards still returns (it waits on the exit
+	// signal the cancelled goroutine already sent).
+	ctx, cancel := context.WithCancel(context.Background())
+	stop2 := startDriveKeepAlive(ctx, []string{root})
+	cancel()
+	awaitStop("context cancel", stop2)
+}
