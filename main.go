@@ -30,6 +30,30 @@ import (
 //go:embed web/index.html
 var indexHTML []byte
 
+// Favicon / app-icon set (v1.2.0), embedded like the page and
+// served by the icon routes in server.go. The mark is its own
+// amber tile (web/icons/favicon.svg is the source), so it reads
+// identically on every UI theme and on light or dark browser
+// chrome — the icons are theme-independent by design.
+//
+//go:embed web/icons/favicon.ico
+var iconICO []byte
+
+//go:embed web/icons/favicon.svg
+var iconSVG []byte
+
+//go:embed web/icons/favicon-32x32.png
+var iconPNG32 []byte
+
+//go:embed web/icons/apple-touch-icon.png
+var iconAppleTouch []byte
+
+//go:embed web/icons/android-chrome-192x192.png
+var iconPNG192 []byte
+
+//go:embed web/icons/android-chrome-512x512.png
+var iconPNG512 []byte
+
 // defaultDataDir picks an OS-appropriate per-user data directory.
 func defaultDataDir() string {
 	if runtime.GOOS == "windows" {

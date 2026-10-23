@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.1.1)
+# Install — Ultra.cc (WellKeptLib v1.2.0)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,16 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.2.0:** pick your colors. A theme selector in
+the page header (and a swatch picker under Settings -
+Appearance) switches between six themes - Midnight (the
+original look, still the default), Daylight (light), Ocean,
+Ember, Forest and Plum. The choice applies instantly and is
+saved on the server, so it follows you across browsers and
+machines. The app also has its own icon now - a book with a
+check on an amber tile - in the browser tab and beside the
+title.
 
 **New in v1.1.1:** a Windows-only startup fix — on Windows,
 after closing the app window, the app could refuse to start

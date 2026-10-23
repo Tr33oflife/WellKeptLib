@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- WellKeptLib app mark: an open book with a check — a library,
+       kept and verified. The glyph is Lucide's "book-check"
+       (ISC license, lucide.dev), redrawn on the app's own amber
+       tile so the mark reads identically on every theme and on
+       light or dark browser chrome: the tile carries its own
+       background, the glyph is always the same dark ink. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffcf6b"/>
+      <stop offset="1" stop-color="#f2b138"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#tile)"/>
+  <g fill="none" stroke="#1a1405" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(14 14) scale(1.5)">
+    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>
+    <path d="m9 9.5l2 2l4-4"/>
+  </g>
+</svg>

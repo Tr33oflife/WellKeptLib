@@ -70,6 +70,8 @@ func defaultConfig() *Config {
 		// v1.0.0: webhook flavor defaults to the generic JSON
 		// payload; the schedule and the webhook both default OFF.
 		WebhookFlavor: "generic",
+		// v1.2.0: the UI theme defaults to the original palette.
+		Theme: DefaultTheme,
 	}
 	if p, err := exec.LookPath("ffprobe"); err == nil {
 		c.FFprobePath = p
@@ -191,6 +193,12 @@ func loadConfig(dataDir string) (*Config, string) {
 			c.WantedLanguages = []string{"eng"}
 		}
 	}
+	// v1.2.0: the theme is a plain stored string, normalized on
+	// the way in — an older config has no key (default), and an
+	// unknown id (e.g. written by a newer build) falls back to
+	// the default rather than erroring or sticking the UI with
+	// a palette it does not have.
+	c.Theme = normalizeTheme(saved.Theme)
 	if saved.FFprobePath != "" {
 		c.FFprobePath = saved.FFprobePath
 	}

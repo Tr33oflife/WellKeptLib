@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.1.1)
+# Install — Windows (WellKeptLib v1.2.0)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.1.1-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.2.0-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,18 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.2.0
+
+- **Theme selector - pick your colors.** The page header
+  has a theme menu, and Settings - Appearance has swatch
+  tiles: six themes (Midnight - the original look and still
+  the default - Daylight, Ocean, Ember, Forest, Plum).
+  Clicking applies the theme immediately; the choice is
+  saved on the server and follows you across browsers.
+- **App icon.** WellKeptLib now has its own icon - a book
+  with a check on an amber tile - in the browser tab and
+  beside the title in the header.
 
 ## What's new in v1.1.1
 

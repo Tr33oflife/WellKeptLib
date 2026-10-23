@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.1.1"
+const Version = "1.2.0"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -550,6 +550,17 @@ func (s *Service) SaveConfig(in Config) error {
 		in.WebhookFlavor = "generic"
 	}
 	in.WebhookURL = strings.TrimSpace(in.WebhookURL)
+	// Theme (v1.2.0) is a preference, normalized like the load
+	// path: a submitted id the page ships is kept, an unknown
+	// one falls back to the default without failing the save.
+	// An EMPTY value means "not part of this save" (a page from
+	// an older build has no theme field) and keeps the current
+	// choice rather than resetting it.
+	if in.Theme == "" {
+		in.Theme = s.cfg.Theme
+	} else {
+		in.Theme = normalizeTheme(in.Theme)
+	}
 	// Roots saved through Settings get the same input hygiene as
 	// roots sent to StartScan (quotes/tilde/env expansion, v0.1.1).
 	cleaned := make([]string, 0, len(in.Roots))

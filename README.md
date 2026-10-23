@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.1.1
+- **Version:** 1.2.0
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -19,9 +19,11 @@ double-click `.exe` on Windows.
 
 ## Screenshots
 
-Taken from a running 1.1.1 instance over a small synthetic
+Taken from a running 1.2.0 instance over a small synthetic
 demo library (the same generated fixture library the tests
-use — no real collection is shown).
+use — no real collection is shown). All shots use the
+default Midnight theme except the last, which shows
+Daylight — one of six built-in themes (new in 1.2.0).
 
 **Library — inventory by size, per-series totals:**
 ![Library tab](docs/screenshots/01-library.png)
@@ -45,6 +47,9 @@ CSV / standalone HTML):**
 **Organize — the hardlink library plan preview: links to
 create, collisions, and skips, before anything is written:**
 ![Organize link plan](docs/screenshots/06-organize-link-plan.png)
+
+**The same library in the Daylight theme:**
+![Library in Daylight theme](docs/screenshots/07-library-daylight.png)
 
 ## What it does
 
@@ -114,6 +119,12 @@ create, collisions, and skips, before anything is written:**
   using this data folder"), 3 = only with `-fail-on-findings`,
   when a completed scan found reclaimable duplicates or
   health problems.
+- **Themes + an app icon (1.2.0).** Six built-in color
+  themes (Midnight default, Daylight, Ocean, Ember, Forest,
+  Plum) from the header menu or Settings → Appearance,
+  persisted server-side and applied without a reload flash —
+  plus a proper favicon / touch-icon set (before 1.2.0 the
+  app served no icon at all).
 - **OpenSubtitles downloads (optional, your own key).** The
   wizard can search OpenSubtitles and download a missing
   subtitle beside the media file (never overwriting; the
@@ -174,7 +185,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.1.1-public.zip` from the
+Get `WellKeptLib-1.2.0-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -276,7 +287,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.1.1 binaries. One disclosed divergence, in a test file
+  1.2.0 binaries. One disclosed divergence, in a test file
   only: the fixture lookup helper additionally accepts this
   repository's fixtures layout, and the fixture generator
   script ships in `fixtures/` — no product code or test
@@ -330,30 +341,37 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.1.1)
+## Verification (what was actually checked for 1.2.0)
 
-- Go test suite: **251 top-level tests, all passing**,
+- Go test suite: **256 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (251 PASS, 0 FAIL);
-  `go vet` and `gofmt` clean; race detector clean over the
-  new lock tests. (Counting note: the true pre-existing base
-  is 246 — an earlier 245 figure in the 1.1.0 record was a
-  counting artifact of a concurrent run, since corrected in
-  the development record; the suite was green either way.)
-- Shipped-binary smoke: **48/48** on the base build,
-  including an **incident replay, 7/7**: a boot killed
-  without cleanup leaves its lock behind, and the next start
-  takes the data folder over automatically instead of
-  refusing — the exact failure 1.1.0 shipped on Windows,
-  replayed against the shared takeover logic on Linux. The
-  public package's extracted binary passes the same smoke.
-- Page checks and render harness are unchanged from 1.1.0
-  (156 looked up / 179 defined; **100/100**), as is the rest
-  of the product: no UI or behavior change beyond the fix.
-- Installer walk on this public package: **12/12**. Honest
-  limit: installer walks run the real binaries and the real
-  installer logic, but `systemctl` itself is shimmed — no
-  real systemd ran in the sandbox.
+  re-run on this published tree (256 PASS, 0 FAIL);
+  `go vet` and `gofmt` clean. No pre-existing test
+  expectation changed.
+- Page checks: 158 ids looked up / 183 defined, all resolve;
+  the Node render harness passes **115/115**.
+- Shipped-binary smoke: **61/61** on the base build — the
+  full battery (baseline 11/2/2/6, incident replay 7/7,
+  link mode end-to-end, report/exports, CLI codes) plus the
+  new surface: all six icon paths served as real images at
+  exact dimensions, theme persistence across a restart,
+  unknown theme values falling back silently. The public
+  package's extracted binary passes the same smoke, and the
+  installer walk passes **12/12** (with the honest limit
+  that `systemctl` is shimmed in the sandbox walks).
+- **Default-theme equality, measured:** a headless-Chrome
+  computed-style probe of 17 chrome elements against a
+  running 1.1.1 binary and the 1.2.0 default found them
+  identical everywhere — Midnight is the old look,
+  pixel-for-pixel, not an approximation. The same probing
+  caught (and fixed) two theme defects before shipping.
+- **Contrast, measured:** body and muted text pass WCAG AA
+  on all six themes. One disclosed miss: the tertiary
+  "faint" text (table headers, sample lines, empty states)
+  measures 3.34–4.00 : 1 on the five dark themes — a
+  pre-existing property of the original design, kept
+  deliberately so the default theme stays pixel-identical;
+  Daylight passes at 5.04 : 1.
 - Scrub gate over the extracted release ZIP (tree + binary
   strings): **zero hits** on the full denylist (personal
   names, usernames, hostnames, domains, private connection
@@ -365,6 +383,11 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 ## Known limitations
 
 - No built-in authentication (see the security warning).
+- **Theme choices are verified in headless Chrome, not yet
+  on real installs** — theme picking, the no-flash reload,
+  and the tab icon on real machines are pending the
+  maintainer's live test, as is the 1.1.1 Windows lock fix
+  below.
 - **The 1.1.1 Windows lock fix is not yet live-proven on
   Windows.** The bug it fixes was confirmed live (a real
   lockout, cleared by hand-deleting the lock file), and the
@@ -406,6 +429,27 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.2.0
+
+- **Theme selector — pick your colors.** Six themes:
+  Midnight (the original look, still the default), Daylight,
+  Ocean, Ember, Forest, Plum. Pick from the header menu or
+  the Settings → Appearance swatch tiles; the choice applies
+  instantly, is stored on the server (it follows you across
+  browsers and survives the settings tuning reset), and is
+  applied before first paint on reload — no flash of the
+  wrong theme. Midnight was verified pixel-identical to the
+  pre-theme UI by a computed-style probe.
+- **An app icon at last.** A book-with-a-check on the app's
+  amber gradient (Lucide `book-check`, ISC licensed),
+  embedded in the binary and served as favicon.svg / .ico /
+  PNG / apple-touch-icon — 1.1.1 and earlier returned 404
+  for `/favicon.ico`; 1.2.0 serves the full set. The same
+  mark sits beside the title in the header.
+- Carries the 1.1.1 Windows lock hotfix. No scan, link,
+  organize, wizard, API (beyond the one new `theme` config
+  key), or behavior changes otherwise.
 
 ## Release notes — 1.1.1 (hotfix; supersedes 1.1.0)
 

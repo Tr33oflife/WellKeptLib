@@ -28,6 +28,17 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	s := &server{svc: svc, page: page, base: base}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleIndex)
+	// Favicon / app icons (v1.2.0): browsers ask for /favicon.ico
+	// unprompted — before this release the mux had no such route
+	// and it 404'd. The set is embedded at build time (see
+	// main.go); the mark carries its own background, so these
+	// are served exactly as shipped on every theme.
+	mux.HandleFunc("GET /favicon.ico", iconHandler(iconICO, "image/x-icon"))
+	mux.HandleFunc("GET /favicon.svg", iconHandler(iconSVG, "image/svg+xml"))
+	mux.HandleFunc("GET /favicon-32x32.png", iconHandler(iconPNG32, "image/png"))
+	mux.HandleFunc("GET /apple-touch-icon.png", iconHandler(iconAppleTouch, "image/png"))
+	mux.HandleFunc("GET /android-chrome-192x192.png", iconHandler(iconPNG192, "image/png"))
+	mux.HandleFunc("GET /android-chrome-512x512.png", iconHandler(iconPNG512, "image/png"))
 	mux.HandleFunc("GET /api/state", s.handleState)
 	mux.HandleFunc("POST /api/scan", s.handleScanStart)
 	mux.HandleFunc("POST /api/scan/cancel", s.handleScanCancel)
@@ -149,6 +160,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeErr encodes a simple JSON error.
 func writeErr(w http.ResponseWriter, status int, err error) {
 	writeJSON(w, status, map[string]string{"error": err.Error()})
+}
+
+// iconHandler serves one embedded icon asset with its content
+// type and a day of cache (the mark changes only with releases).
+func iconHandler(b []byte, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		_, _ = w.Write(b)
+	}
 }
 
 // handleIndex serves the embedded single-page UI.

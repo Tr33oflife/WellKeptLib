@@ -4,6 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WellKeptLib</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32x32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="android-chrome-192x192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>
+/* Theme anti-flash (v1.2.0): apply the browser-mirrored theme
+   before the stylesheet paints, so a reload never flashes the
+   wrong palette. The server copy (config "theme") reconciles
+   on load and wins disagreements — see applyTheme in the main
+   script. Anything unreadable simply leaves the default. */
+try {
+  var wklTheme = localStorage.getItem("wkl-theme");
+  if (wklTheme) document.documentElement.setAttribute("data-theme", wklTheme);
+} catch (e) { /* no mirror: the default theme paints */ }
+</script>
 <style>
   /* ==== Design system v2 (v0.4.0 UI sweep): layered dark surfaces, amber
          accent, elevation + spacing scales, focus rings. CSS-only refresh —
@@ -12,6 +28,33 @@
     --bg:#0c0e13; --bg2:#11141c; --panel:#161a24; --panel2:#1c212e; --line:#262d3d;
     --text:#e8ebf2; --dim:#9aa4b8; --faint:#626d82;
     --amber:#f2b138; --amber2:#ffcf6b; --red:#ff6b6b; --green:#4ade80; --blue:#5eb1ff; --purple:#b18cff;
+    /* v1.2.0 theme contract: every UI-chrome color below is a
+       variable a theme may override under [data-theme="..."].
+       The values here ARE the midnight palette — the original
+       look, unchanged. Themes override; nothing else hardcodes
+       a chrome color anywhere in this stylesheet. */
+    --on-accent:#1a1405;
+    --panel-top:#181d29; --group-top:#1e2432; --btn-top:#212839; --row-hover:#1a2030; --chip-bg:#10141d;
+    --header-a:rgba(30,36,50,.88); --header-b:rgba(22,26,36,.88);
+    --bg-glow1:#1b2233; --bg-glow1t:rgba(27,34,51,0); --bg-glow2:#131c30; --bg-glow2t:rgba(19,28,48,0);
+    --scroll:#2c3549; --scroll-hover:#3a4859;
+    --sel:rgba(242,177,56,.38); --sel-text:#fff;
+    --accent-shadow:rgba(242,177,56,.28); --logo-glow:rgba(242,177,56,.35);
+    --progress-glow:rgba(242,177,56,.45); --header-hint:rgba(242,177,56,.07);
+    --sheen:rgba(255,255,255,.045); --sheen-0:rgba(255,255,255,0); --sheen-soft:rgba(255,255,255,.04); --badge-sheen:rgba(255,255,255,.05);
+    --hover-bg:rgba(255,255,255,.05); --stripe:rgba(255,255,255,.016); --faint-bg:rgba(255,255,255,.012);
+    --fill-sheen:rgba(255,255,255,.35);
+    --red-line:#5b2b2b; --red-bg:#2a1518; --red-soft:#171017;
+    --red-tint1:rgba(255,107,107,.09); --red-tint2:rgba(255,107,107,.03); --red-glow:rgba(255,107,107,.14);
+    --green-line:#1f4d33; --green-bg:#0f2418; --green-soft:#0f1a13;
+    --green-tint1:rgba(74,222,128,.09); --green-tint2:rgba(74,222,128,.03); --green-row:rgba(74,222,128,.07);
+    --blue-line:#23405e; --blue-bg:#101c2a; --blue-soft:#101820;
+    --blue-tint1:rgba(94,177,255,.09); --blue-tint2:rgba(94,177,255,.03);
+    --amber-line:#5b4a1f; --amber-bg:#2a2110;
+    --purple-line:#3d2c5e; --purple-bg:#1b1429;
+    --danger-line:#4a2b30; --danger-top:#2a1a1e; --danger-bg:#221419; --danger-text:#ffb3b3;
+    --inset-shadow:rgba(0,0,0,.55); --header-deep:rgba(0,0,0,.5);
+    --swatch-line:rgba(0,0,0,.28);
     --radius:12px;
     /* v2 tokens */
     --line-soft:#1e2534; --inset:#0d1017;
@@ -22,42 +65,179 @@
     --shadow-lg:0 18px 44px rgba(0,0,0,.42);
     --ring:0 0 0 3px rgba(242,177,56,.28);
     --accent-grad:linear-gradient(180deg,var(--amber2),var(--amber));
-    --panel-grad:linear-gradient(180deg,#181d29,var(--panel));
+    --panel-grad:linear-gradient(180deg,var(--panel-top),var(--panel));
     --ease:cubic-bezier(.22,.8,.32,1);
+  }
+  /* ==== Themes (v1.2.0) ==========================================
+     data-theme on <html> picks a palette; :root above IS
+     "midnight" (the original look — also the fallback when the
+     attribute is absent or unknown). Each block below overrides
+     the theme-contract variables only — structure, spacing and
+     shadows are shared. Semantic hues stay recognizable on every
+     theme (red warns, green confirms) at theme-appropriate
+     lightness. Dark themes inherit midnight's white-alpha
+     sheens/stripes; daylight overrides those too. ==== */
+  :root[data-theme="daylight"]{
+    --bg:#f2f4f8; --bg2:#e9edf3; --panel:#ffffff; --panel2:#eef1f6; --line:#c7d0de;
+    --line-soft:#dde3ec; --inset:#e8ecf2;
+    --text:#1c2330; --dim:#4d5a70; --faint:#5f7089;
+    --amber:#b57e10; --amber2:#8f6608; --red:#c62f3b; --green:#177245; --blue:#1668c4; --purple:#6d43c8;
+    --on-accent:#0d0a02;
+    --accent-grad:linear-gradient(180deg,#f5bc45,#dfa013);
+    --panel-top:#fbfcfe; --group-top:#f4f6fa; --btn-top:#ffffff; --row-hover:#e9eef7; --chip-bg:#f2f5f9;
+    --header-a:rgba(255,255,255,.88); --header-b:rgba(238,241,246,.88);
+    --bg-glow1:#d7e2f2; --bg-glow1t:rgba(215,226,242,0); --bg-glow2:#e2e8f4; --bg-glow2t:rgba(226,232,244,0);
+    --scroll:#b4c0d2; --scroll-hover:#8fa1ba;
+    --sel:rgba(181,126,16,.28); --sel-text:#1c2330;
+    --ring:0 0 0 3px rgba(181,126,16,.35);
+    --accent-shadow:rgba(181,126,16,.35); --logo-glow:rgba(181,126,16,.35);
+    --progress-glow:rgba(181,126,16,.45); --header-hint:rgba(181,126,16,.18);
+    --sheen:rgba(255,255,255,.5); --sheen-soft:rgba(255,255,255,.6); --badge-sheen:rgba(255,255,255,.5);
+    --hover-bg:rgba(28,35,48,.06); --stripe:rgba(28,35,48,.03); --faint-bg:rgba(28,35,48,.02);
+    --fill-sheen:rgba(255,255,255,.45);
+    --red-line:#dfa3a9; --red-bg:#fbe9ea; --red-soft:#fdf0f0;
+    --red-tint1:rgba(198,47,59,.09); --red-tint2:rgba(198,47,59,.04); --red-glow:rgba(198,47,59,.16);
+    --green-line:#8fc7a2; --green-bg:#e2f2e7; --green-soft:#eef7f0;
+    --green-tint1:rgba(23,114,69,.10); --green-tint2:rgba(23,114,69,.04); --green-row:rgba(23,114,69,.08);
+    --blue-line:#9dbede; --blue-bg:#e3eefb; --blue-soft:#eef4fc;
+    --blue-tint1:rgba(22,104,196,.09); --blue-tint2:rgba(22,104,196,.04);
+    --amber-line:#d9bc72; --amber-bg:#faf0da;
+    --purple-line:#bda9e3; --purple-bg:#eee8fa;
+    --danger-line:#dfa3a3; --danger-top:#fdf1f1; --danger-bg:#fbe6e6; --danger-text:#8f1f28;
+    --inset-shadow:rgba(28,35,48,.18); --header-deep:rgba(28,35,48,.18);
+    --shadow-sm:0 2px 8px rgba(28,35,48,.10);
+    --shadow-md:0 8px 24px rgba(28,35,48,.12);
+    --shadow-lg:0 18px 44px rgba(28,35,48,.16);
+  }
+  :root[data-theme="ocean"]{
+    --bg:#071418; --bg2:#0a1d23; --panel:#0c232b; --panel2:#10303a; --line:#1d4350;
+    --line-soft:#14323c; --inset:#081a20;
+    --text:#e2f1f2; --dim:#93b8bc; --faint:#5f828a;
+    --amber:#25c2b8; --amber2:#6fe3da; --red:#ff7a72; --green:#3fd68f; --blue:#57b8ff; --purple:#b18cff;
+    --on-accent:#03211d;
+    --panel-top:#0f2831; --group-top:#0f2c36; --btn-top:#14333d; --row-hover:#123640; --chip-bg:#0a2027;
+    --header-a:rgba(16,48,58,.88); --header-b:rgba(12,35,43,.88);
+    --bg-glow1:#0d3040; --bg-glow1t:rgba(13,48,64,0); --bg-glow2:#0a2833; --bg-glow2t:rgba(10,40,51,0);
+    --scroll:#1e4a57; --scroll-hover:#2a6172;
+    --sel:rgba(37,194,184,.35); --sel-text:#fff;
+    --ring:0 0 0 3px rgba(37,194,184,.30);
+    --accent-shadow:rgba(37,194,184,.30); --logo-glow:rgba(37,194,184,.35);
+    --progress-glow:rgba(37,194,184,.45); --header-hint:rgba(37,194,184,.08);
+    --red-line:#612e33; --red-bg:#2b1518; --red-soft:#1d1114;
+    --red-tint1:rgba(255,122,114,.09); --red-tint2:rgba(255,122,114,.03); --red-glow:rgba(255,122,114,.14);
+    --green-line:#1d5240; --green-bg:#0d2b1e; --green-soft:#0c2019;
+    --green-tint1:rgba(63,214,143,.09); --green-tint2:rgba(63,214,143,.03); --green-row:rgba(63,214,143,.07);
+    --blue-line:#20506e; --blue-bg:#0d2233; --blue-soft:#0c1c29;
+    --blue-tint1:rgba(87,184,255,.09); --blue-tint2:rgba(87,184,255,.03);
+    --amber-line:#175e57; --amber-bg:#0f2c28;
+    --purple-line:#3d2c5e; --purple-bg:#1d1836;
+    --danger-line:#4d2a2e; --danger-top:#2b181b; --danger-bg:#201114; --danger-text:#ffb3ab;
+  }
+  :root[data-theme="ember"]{
+    --bg:#140e08; --bg2:#1a120a; --panel:#20160d; --panel2:#2a1d11; --line:#453219;
+    --line-soft:#332412; --inset:#170f07;
+    --text:#f5e9d7; --dim:#c2a888; --faint:#8a6f52;
+    --amber:#f5a623; --amber2:#ffc95e; --red:#ff7a66; --green:#8bd450; --blue:#6db3f2; --purple:#c39bff;
+    --on-accent:#221503;
+    --panel-top:#271a0f; --group-top:#2a1c0f; --btn-top:#33220f; --row-hover:#2e2010; --chip-bg:#1d130a;
+    --header-a:rgba(42,29,17,.88); --header-b:rgba(32,22,13,.88);
+    --bg-glow1:#2e1e0e; --bg-glow1t:rgba(46,30,14,0); --bg-glow2:#241708; --bg-glow2t:rgba(36,23,8,0);
+    --scroll:#4a3517; --scroll-hover:#5f4520;
+    --sel:rgba(245,166,35,.38); --sel-text:#fff;
+    --ring:0 0 0 3px rgba(245,166,35,.30);
+    --accent-shadow:rgba(245,166,35,.30); --logo-glow:rgba(245,166,35,.35);
+    --progress-glow:rgba(245,166,35,.45); --header-hint:rgba(245,166,35,.08);
+    --red-line:#6b3226; --red-bg:#33160f; --red-soft:#221108;
+    --red-tint1:rgba(255,122,102,.09); --red-tint2:rgba(255,122,102,.03); --red-glow:rgba(255,122,102,.14);
+    --green-line:#3c5a24; --green-bg:#1d2f10; --green-soft:#16230c;
+    --green-tint1:rgba(139,212,80,.09); --green-tint2:rgba(139,212,80,.03); --green-row:rgba(139,212,80,.07);
+    --blue-line:#2a4a68; --blue-bg:#152636; --blue-soft:#111e2b;
+    --blue-tint1:rgba(109,179,242,.09); --blue-tint2:rgba(109,179,242,.03);
+    --amber-line:#6e5220; --amber-bg:#33230c;
+    --purple-line:#4a356e; --purple-bg:#271a3d;
+    --danger-line:#66332a; --danger-top:#2e1710; --danger-bg:#221008; --danger-text:#ffb59e;
+  }
+  :root[data-theme="forest"]{
+    --bg:#0a120c; --bg2:#0e1a10; --panel:#122014; --panel2:#18301b; --line:#274a2c;
+    --line-soft:#1b3520; --inset:#0b150d;
+    --text:#e6f2e4; --dim:#a3bfa0; --faint:#688264;
+    --amber:#8fd14f; --amber2:#b7e37a; --red:#ff7a72; --green:#34d399; --blue:#5eb1ff; --purple:#b18cff;
+    --on-accent:#16250a;
+    --panel-top:#16281a; --group-top:#172b1a; --btn-top:#1d3520; --row-hover:#1c331f; --chip-bg:#0e1c10;
+    --header-a:rgba(24,48,27,.88); --header-b:rgba(18,32,20,.88);
+    --bg-glow1:#16300f; --bg-glow1t:rgba(22,48,15,0); --bg-glow2:#122610; --bg-glow2t:rgba(18,38,16,0);
+    --scroll:#2c5231; --scroll-hover:#3a6b40;
+    --sel:rgba(143,209,79,.32); --sel-text:#fff;
+    --ring:0 0 0 3px rgba(143,209,79,.28);
+    --accent-shadow:rgba(143,209,79,.28); --logo-glow:rgba(143,209,79,.35);
+    --progress-glow:rgba(143,209,79,.45); --header-hint:rgba(143,209,79,.07);
+    --red-line:#5b2b2b; --red-bg:#2a1518; --red-soft:#1c1113;
+    --red-tint1:rgba(255,122,114,.09); --red-tint2:rgba(255,122,114,.03); --red-glow:rgba(255,122,114,.14);
+    --green-line:#1f5238; --green-bg:#0f2a1c; --green-soft:#0d2115;
+    --green-tint1:rgba(52,211,153,.09); --green-tint2:rgba(52,211,153,.03); --green-row:rgba(52,211,153,.07);
+    --blue-line:#23405e; --blue-bg:#101f30; --blue-soft:#0e1a29;
+    --blue-tint1:rgba(94,177,255,.09); --blue-tint2:rgba(94,177,255,.03);
+    --amber-line:#4c6420; --amber-bg:#22320f;
+    --purple-line:#3d2c5e; --purple-bg:#1e1733;
+    --danger-line:#4d2a2c; --danger-top:#2b1718; --danger-bg:#201112; --danger-text:#ffb3ab;
+  }
+  :root[data-theme="plum"]{
+    --bg:#120a1c; --bg2:#180f28; --panel:#1d1233; --panel2:#271a42; --line:#3d2a63;
+    --line-soft:#2c1d4a; --inset:#140b22;
+    --text:#efe8fa; --dim:#b3a3d4; --faint:#7a68a3;
+    --amber:#b678f0; --amber2:#d3a6ff; --red:#ff7a8a; --green:#4ade80; --blue:#6db3ff; --purple:#f08fd0;
+    --on-accent:#20083a;
+    --panel-top:#241743; --group-top:#251842; --btn-top:#2e1f4d; --row-hover:#2a1c47; --chip-bg:#180e2a;
+    --header-a:rgba(39,26,66,.88); --header-b:rgba(29,18,51,.88);
+    --bg-glow1:#241040; --bg-glow1t:rgba(36,16,64,0); --bg-glow2:#1c0d33; --bg-glow2t:rgba(28,13,51,0);
+    --scroll:#3f2c66; --scroll-hover:#543c85;
+    --sel:rgba(182,120,240,.35); --sel-text:#fff;
+    --ring:0 0 0 3px rgba(182,120,240,.30);
+    --accent-shadow:rgba(182,120,240,.30); --logo-glow:rgba(182,120,240,.35);
+    --progress-glow:rgba(182,120,240,.45); --header-hint:rgba(182,120,240,.08);
+    --red-line:#63304a; --red-bg:#2e1424; --red-soft:#21101a;
+    --red-tint1:rgba(255,122,138,.09); --red-tint2:rgba(255,122,138,.03); --red-glow:rgba(255,122,138,.14);
+    --green-line:#1f5238; --green-bg:#0f2a1c; --green-soft:#0d2115;
+    --green-tint1:rgba(74,222,128,.09); --green-tint2:rgba(74,222,128,.03); --green-row:rgba(74,222,128,.07);
+    --blue-line:#274a75; --blue-bg:#122036; --blue-soft:#0f1a2c;
+    --blue-tint1:rgba(109,179,255,.09); --blue-tint2:rgba(109,179,255,.03);
+    --amber-line:#5e3d99; --amber-bg:#2c1a4a;
+    --purple-line:#6e2c5e; --purple-bg:#33122e;
+    --danger-line:#55283c; --danger-top:#2e1524; --danger-bg:#221019; --danger-text:#ffb3c2;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{background:
-         radial-gradient(1200px 600px at 80% -10%, #1b2233 0%, rgba(27,34,51,0) 55%),
-         radial-gradient(900px 520px at -10% 0%, #131c30 0%, rgba(19,28,48,0) 50%),
+         radial-gradient(1200px 600px at 80% -10%, var(--bg-glow1) 0%, var(--bg-glow1t) 55%),
+         radial-gradient(900px 520px at -10% 0%, var(--bg-glow2) 0%, var(--bg-glow2t) 50%),
          var(--bg);
        color:var(--text);
        font:14px/1.55 "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;min-height:100vh}
-  ::selection{background:rgba(242,177,56,.38);color:#fff}
+  ::selection{background:var(--sel);color:var(--sel-text)}
   /* Thin dark scrollbars (page + every scroll container) */
-  *{scrollbar-width:thin;scrollbar-color:#2c3549 transparent}
+  *{scrollbar-width:thin;scrollbar-color:var(--scroll) transparent}
   ::-webkit-scrollbar{width:9px;height:9px}
-  ::-webkit-scrollbar-thumb{background:#2c3549;border-radius:99px;border:2px solid transparent;background-clip:content-box}
-  ::-webkit-scrollbar-thumb:hover{background:#3a4859;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:99px;border:2px solid transparent;background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:var(--scroll-hover);border:2px solid transparent;background-clip:content-box}
   ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
   h1{font-size:22px;margin:0;letter-spacing:.2px;font-weight:750}
   h2{font-size:16px;margin:0 0 10px;font-weight:700;letter-spacing:.1px}
   a{color:var(--amber2)}
   :focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:4px}
-  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:linear-gradient(180deg,#212839,var(--panel2));color:var(--text);
+  button{font:inherit;cursor:pointer;border:1px solid var(--line);background:linear-gradient(180deg,var(--btn-top),var(--panel2));color:var(--text);
          padding:6px 13px;border-radius:var(--radius-sm);box-shadow:var(--shadow-sm);
          transition:border-color .15s var(--ease),color .15s var(--ease),background .15s var(--ease),box-shadow .15s var(--ease),transform .08s var(--ease)}
   button:hover{border-color:var(--amber);color:var(--amber2)}
   button:active{transform:translateY(1px)}
   button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;transform:none}
   button:disabled:hover{border-color:var(--line);color:var(--text)}
-  button.primary{background:var(--accent-grad);color:#1a1405;border:none;font-weight:700;box-shadow:0 4px 16px rgba(242,177,56,.28)}
-  button.primary:hover{filter:brightness(1.07);color:#1a1405}
+  button.primary{background:var(--accent-grad);color:var(--on-accent);border:none;font-weight:700;box-shadow:0 4px 16px var(--accent-shadow)}
+  button.primary:hover{filter:brightness(1.07);color:var(--on-accent)}
   button.primary:disabled:hover{filter:none}
-  a.btn-primary{display:inline-block;text-decoration:none;background:var(--accent-grad);color:#1a1405;font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);font-size:15px;box-shadow:0 4px 16px rgba(242,177,56,.28);transition:filter .15s var(--ease)}
-  a.btn-primary:hover{filter:brightness(1.07);color:#1a1405}
-  button.danger{border-color:#4a2b30;background:linear-gradient(180deg,#2a1a1e,#221419);color:#ffb3b3}
+  a.btn-primary{display:inline-block;text-decoration:none;background:var(--accent-grad);color:var(--on-accent);font-weight:700;padding:9px 20px;border-radius:var(--radius-sm);font-size:15px;box-shadow:0 4px 16px var(--accent-shadow);transition:filter .15s var(--ease)}
+  a.btn-primary:hover{filter:brightness(1.07);color:var(--on-accent)}
+  button.danger{border-color:var(--danger-line);background:linear-gradient(180deg,var(--danger-top),var(--danger-bg));color:var(--danger-text)}
   button.danger:hover{border-color:var(--red);color:var(--red)}
   button.small{padding:3px 10px;font-size:12px;border-radius:7px;box-shadow:none}
   input,textarea,select{font:inherit;background:var(--inset);border:1px solid var(--line);color:var(--text);
@@ -75,24 +255,24 @@
          border-radius:var(--radius-lg);padding:16px 18px;box-shadow:var(--shadow-lg)}
   @media (min-width:901px){
     header{position:sticky;top:12px;z-index:60;
-           background:linear-gradient(180deg,rgba(30,36,50,.88),rgba(22,26,36,.88));
+           background:linear-gradient(180deg,var(--header-a),var(--header-b));
            backdrop-filter:blur(14px) saturate(1.35);-webkit-backdrop-filter:blur(14px) saturate(1.35);
-           box-shadow:var(--shadow-lg),0 0 0 1px rgba(242,177,56,.07),0 10px 34px rgba(0,0,0,.5)}
+           box-shadow:var(--shadow-lg),0 0 0 1px var(--header-hint),0 10px 34px var(--header-deep)}
   }
   .brand{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
   .brand .sub{color:var(--dim);font-size:12.5px}
   .logo{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;flex:none;
-        background:var(--accent-grad);color:#1a1405;font-size:19px;border-radius:10px;
-        box-shadow:0 4px 14px rgba(242,177,56,.35)}
+        border-radius:10px;overflow:hidden}
+  .logo svg{display:block;width:100%;height:100%}
   .scanbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
   .scanbar .grow{flex:1;min-width:260px}
   .scanbar textarea{width:100%;height:38px;resize:vertical}
   .scanbar button{padding:9px 15px}
   .progress{height:10px;background:var(--inset);border-radius:var(--radius-pill);overflow:hidden;margin-top:14px;
-            border:1px solid var(--line);box-shadow:inset 0 1px 3px rgba(0,0,0,.55)}
+            border:1px solid var(--line);box-shadow:inset 0 1px 3px var(--inset-shadow)}
   .progress > div{height:100%;width:0;border-radius:var(--radius-pill);
                   background:linear-gradient(90deg,var(--amber),var(--amber2));
-                  box-shadow:0 0 12px rgba(242,177,56,.45),inset 0 1px 0 rgba(255,255,255,.35);
+                  box-shadow:0 0 12px var(--progress-glow),inset 0 1px 0 var(--fill-sheen);
                   transition:width .45s var(--ease)}
   /* Indeterminate state: the render adds .indet only while a scan runs
      with no known total yet (guard in refreshState) — the fill slides
@@ -100,15 +280,15 @@
   .progress.indet > div{width:38% !important;animation:prog-indet 1.15s ease-in-out infinite alternate}
   @keyframes prog-indet{from{transform:translateX(-115%)}to{transform:translateX(285%)}}
   .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-  .chip{background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,0)),#10141d;
+  .chip{background:linear-gradient(180deg,var(--sheen),var(--sheen-0)),var(--chip-bg);
         border:1px solid var(--line);border-radius:var(--radius-pill);padding:3px 12px;font-size:12.5px;color:var(--dim);
-        box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+        box-shadow:inset 0 1px 0 var(--sheen-soft)}
   .chip b{color:var(--text);font-weight:650}
-  .chip.warn{border-color:#5b2b2b;background:linear-gradient(180deg,rgba(255,107,107,.09),rgba(255,107,107,.03)),#171017}
+  .chip.warn{border-color:var(--red-line);background:linear-gradient(180deg,var(--red-tint1),var(--red-tint2)),var(--red-soft)}
   .chip.warn b{color:var(--red)}
-  .chip.good{border-color:#1f4d33;background:linear-gradient(180deg,rgba(74,222,128,.09),rgba(74,222,128,.03)),#0f1a13}
+  .chip.good{border-color:var(--green-line);background:linear-gradient(180deg,var(--green-tint1),var(--green-tint2)),var(--green-soft)}
   .chip.good b{color:var(--green)}
-  .chip.info{border-color:#23405e;background:linear-gradient(180deg,rgba(94,177,255,.09),rgba(94,177,255,.03)),#101820}
+  .chip.info{border-color:var(--blue-line);background:linear-gradient(180deg,var(--blue-tint1),var(--blue-tint2)),var(--blue-soft)}
   .chip.info b{color:var(--blue)}
   /* Tabs: segmented pill bar */
   nav.tabs{display:flex;gap:2px;margin:18px 0 14px;flex-wrap:wrap;width:fit-content;max-width:100%;
@@ -116,10 +296,10 @@
            padding:4px;box-shadow:var(--shadow-sm)}
   nav.tabs button{border-color:transparent;background:transparent;box-shadow:none;border-radius:var(--radius-pill);
                   padding:7px 16px;font-weight:600;color:var(--dim)}
-  nav.tabs button:hover{color:var(--text);background:rgba(255,255,255,.05);border-color:transparent}
-  nav.tabs button.active{background:var(--accent-grad);border-color:transparent;color:#1a1405;
-                         box-shadow:0 3px 12px rgba(242,177,56,.35)}
-  nav.tabs button.active:hover{color:#1a1405}
+  nav.tabs button:hover{color:var(--text);background:var(--hover-bg);border-color:transparent}
+  nav.tabs button.active{background:var(--accent-grad);border-color:transparent;color:var(--on-accent);
+                         box-shadow:0 3px 12px var(--logo-glow)}
+  nav.tabs button.active:hover{color:var(--on-accent)}
   nav.tabs button .n{opacity:.75;font-weight:400}
   section.panel{display:none;background:var(--panel-grad);border:1px solid var(--line);border-radius:var(--radius-lg);
                 padding:18px 20px;box-shadow:var(--shadow-md)}
@@ -131,8 +311,8 @@
       position:sticky;top:0;background:var(--panel2);z-index:3;box-shadow:0 1px 0 var(--line)}
   td{padding:7px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top}
   tbody tr{transition:background .12s var(--ease)}
-  tbody tr:nth-child(even){background:rgba(255,255,255,.016)}
-  tr:hover td{background:#1a2030}
+  tbody tr:nth-child(even){background:var(--stripe)}
+  tr:hover td{background:var(--row-hover)}
   /* Numeric columns right-aligned per table (CSS-only; DOM untouched) */
   #lib-table td:nth-child(4),#lib-table td:nth-child(5),
   #lib-table th:nth-child(4),#lib-table th:nth-child(5),
@@ -146,21 +326,21 @@
   .mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all}
   .dim{color:var(--dim)} .small{font-size:12px}
   .badge{display:inline-block;padding:1px 9px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;
-         letter-spacing:.2px;border:1px solid var(--line);white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
-  .b-red{color:var(--red);border-color:#5b2b2b;background:#2a1518}
-  .b-amber{color:var(--amber2);border-color:#5b4a1f;background:#2a2110}
-  .b-green{color:var(--green);border-color:#1f4d33;background:#0f2418}
-  .b-blue{color:var(--blue);border-color:#23405e;background:#101c2a}
-  .b-purple{color:var(--purple);border-color:#3d2c5e;background:#1b1429}
+         letter-spacing:.2px;border:1px solid var(--line);white-space:nowrap;box-shadow:inset 0 1px 0 var(--badge-sheen)}
+  .b-red{color:var(--red);border-color:var(--red-line);background:var(--red-bg)}
+  .b-amber{color:var(--amber2);border-color:var(--amber-line);background:var(--amber-bg)}
+  .b-green{color:var(--green);border-color:var(--green-line);background:var(--green-bg)}
+  .b-blue{color:var(--blue);border-color:var(--blue-line);background:var(--blue-bg)}
+  .b-purple{color:var(--purple);border-color:var(--purple-line);background:var(--purple-bg)}
   .b-dim{color:var(--dim)}
   .sample{color:var(--faint);font-style:italic;font-size:12.5px}
   .group{border:1px solid var(--line);border-radius:var(--radius-lg);padding:14px 16px;margin-bottom:14px;
-         background:linear-gradient(180deg,#1e2432,var(--panel2));box-shadow:var(--shadow-sm)}
+         background:linear-gradient(180deg,var(--group-top),var(--panel2));box-shadow:var(--shadow-sm)}
   .group h3{margin:0 0 4px;font-size:14.5px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:26px}
   @media (max-width:900px){.grid2{grid-template-columns:1fr}}
   .empty{color:var(--faint);padding:24px 22px;text-align:center;font-size:14px;
-         border:1px dashed var(--line);border-radius:var(--radius-md);background:rgba(255,255,255,.012)}
+         border:1px dashed var(--line);border-radius:var(--radius-md);background:var(--faint-bg)}
   .excluded-row td{opacity:.55}
   .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
   .toolbar select{padding:5px 8px;min-height:30px}
@@ -170,7 +350,7 @@
   /* JS-rendered notice / confirm / path boxes (inline-styled in markup):
      add elevation only — their inline borders/backgrounds stay in charge. */
   #import-panel,#sub-audit-notice,#dup-pathbox,#health-pathbox{box-shadow:var(--shadow-md)}
-  #dup-confirm,#health-confirm{box-shadow:0 10px 30px rgba(255,107,107,.14),var(--shadow-md)}
+  #dup-confirm,#health-confirm{box-shadow:0 10px 30px var(--red-glow),var(--shadow-md)}
   details summary:hover{color:var(--amber2)}
   /* ==== Duplicates overhaul (v0.6.0) ================================
      Summary strip, filter/sort controls, collapsible groups,
@@ -188,9 +368,9 @@
   .dup-body{display:none;margin-top:10px}
   .group.open .dup-body{display:block}
   .dup-tablewrap{overflow-x:auto}
-  .dup-keeper td{background:rgba(74,222,128,.07)}
+  .dup-keeper td{background:var(--green-row)}
   .keeper-chip{display:inline-block;padding:1px 8px;border-radius:var(--radius-pill);font-size:11.5px;font-weight:600;
-               color:var(--green);border:1px solid #1f4d33;background:#0f2418;white-space:nowrap}
+               color:var(--green);border:1px solid var(--green-line);background:var(--green-bg);white-space:nowrap}
   .dup-best{font-weight:700}
   .dup-best::after{content:" ▲";color:var(--amber);font-size:10px}
   .dup-delta{color:var(--faint);font-size:12px;white-space:nowrap}
@@ -209,6 +389,21 @@
                  border-radius:var(--radius-pill);padding:9px 20px;font-size:13.5px;font-weight:600;
                  box-shadow:var(--shadow-lg);transition:opacity .18s var(--ease),transform .18s var(--ease)}
   #backnav-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* Theme selector (v1.2.0): header picker + Settings tiles. The
+     swatch dots inside a tile carry that theme's OWN palette as
+     content (they depict the theme); everything around them is
+     painted from the active theme's variables like all chrome. */
+  .theme-pick{display:inline-flex;align-items:center;gap:7px;margin-left:auto}
+  .theme-pick label{display:inline;margin:0}
+  .theme-pick select{min-height:30px;padding:4px 8px}
+  .theme-tiles{display:flex;gap:10px;flex-wrap:wrap}
+  .theme-tile{display:inline-flex;flex-direction:row;align-items:center;gap:9px;padding:9px 13px;margin:0;
+              text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--text);
+              border:1px solid var(--line);border-radius:var(--radius-md);background:var(--panel2);cursor:pointer}
+  .theme-tile input{margin:0}
+  .theme-tile:has(input:checked){border-color:var(--amber);box-shadow:var(--ring)}
+  .theme-swatches{display:inline-flex;gap:4px}
+  .theme-swatches i{display:block;width:16px;height:16px;border-radius:5px;border:1px solid var(--swatch-line)}
   /* Narrow screens: header un-sticks, everything stacks, no page-level
      horizontal scroll (tables keep scrolling inside their containers). */
   @media (max-width:900px){
@@ -231,10 +426,11 @@
   <!-- ================= Header: brand + always-visible scan controls ================= -->
   <header>
     <div class="brand">
-      <span class="logo">▣</span>
+      <span class="logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="logo-tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffcf6b"/><stop offset="1" stop-color="#f2b138"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="14" fill="url(#logo-tile)"/><g fill="none" stroke="#1a1405" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(14 14) scale(1.5)"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/><path d="m9 9.5l2 2l4-4"/></g></svg></span>
       <h1>WellKeptLib</h1>
       <span class="sub">file-level scanner · organize with preview + undo · v<span id="ver">…</span></span>
       <span class="sub" id="toolinfo"></span>
+      <span class="theme-pick"><label for="theme-select">Theme</label><select id="theme-select" aria-label="UI theme"><option value="midnight">Midnight</option><option value="daylight">Daylight</option><option value="ocean">Ocean</option><option value="ember">Ember</option><option value="forest">Forest</option><option value="plum">Plum</option></select></span>
     </div>
     <div class="scanbar">
       <div class="grow">
@@ -248,7 +444,7 @@
     <!-- Plex import panel (v0.2.0): sections fetched live, locations
          shown mapped + validated; checking boxes only fills the roots
          box — nothing scans until Start scan is pressed. -->
-    <div id="import-panel" style="display:none;margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#0d1017"></div>
+    <div id="import-panel" style="display:none;margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--inset)"></div>
     <div class="progress"><div id="progbar"></div></div>
     <div class="chips" id="chips"><span class="chip">No scan yet</span></div>
   </header>
@@ -535,6 +731,23 @@
 
   <!-- ================= Settings ================= -->
   <section class="panel" id="panel-settings">
+    <!-- Appearance (v1.2.0): the theme picker. Choosing a theme
+         applies it immediately (the preview IS the choice) and
+         saves it on the server like any other preference — it
+         follows you across browsers, and Reset tuning leaves it
+         alone. The header carries the same picker as a select. -->
+    <div id="appearance-card" style="margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:18px">
+      <h2>Appearance</h2>
+      <p class="dim small" style="margin-top:0;max-width:760px">Pick a theme — it applies the moment you choose it and is saved on the server, so the same theme greets you in every browser. Current theme: <b id="theme-active-name">Midnight</b>.</p>
+      <div class="theme-tiles" role="radiogroup" aria-label="UI theme">
+        <label class="theme-tile"><input type="radio" name="wkl-theme" value="midnight"><span class="theme-swatches"><i style="background:#0c0e13"></i><i style="background:#161a24"></i><i style="background:#f2b138"></i></span>Midnight</label>
+        <label class="theme-tile"><input type="radio" name="wkl-theme" value="daylight"><span class="theme-swatches"><i style="background:#f2f4f8"></i><i style="background:#ffffff"></i><i style="background:#b57e10"></i></span>Daylight</label>
+        <label class="theme-tile"><input type="radio" name="wkl-theme" value="ocean"><span class="theme-swatches"><i style="background:#071418"></i><i style="background:#0c232b"></i><i style="background:#25c2b8"></i></span>Ocean</label>
+        <label class="theme-tile"><input type="radio" name="wkl-theme" value="ember"><span class="theme-swatches"><i style="background:#140e08"></i><i style="background:#20160d"></i><i style="background:#f5a623"></i></span>Ember</label>
+        <label class="theme-tile"><input type="radio" name="wkl-theme" value="forest"><span class="theme-swatches"><i style="background:#0a120c"></i><i style="background:#122014"></i><i style="background:#8fd14f"></i></span>Forest</label>
+        <label class="theme-tile"><input type="radio" name="wkl-theme" value="plum"><span class="theme-swatches"><i style="background:#120a1c"></i><i style="background:#1d1233"></i><i style="background:#b678f0"></i></span>Plum</label>
+      </div>
+    </div>
     <div class="grid2">
       <div>
         <h2>Scanner settings</h2>
@@ -1813,6 +2026,10 @@ async function healthDeleteGo(){
 let currentCfg = null;
 async function refreshSettings(){
   currentCfg = await api.getConfig();
+  // Theme (v1.2.0): the server copy is authoritative — reconcile
+  // the applied theme with it as settings load (no persist:
+  // this IS the persisted value arriving).
+  applyTheme((currentCfg && currentCfg.theme) || "midnight", false);
   $("cfg-ffprobe").value = currentCfg.ffprobe_path || "";
   $("cfg-ffmpeg").value = currentCfg.ffmpeg_path || "";
   $("cfg-subconf").value = currentCfg.subtitle_confidence;
@@ -1984,7 +2201,7 @@ function renderPlexPrimary(view){
   if (signinFlow || switchFlow) return; // a flow owns the block right now
   const box = $("plx-primary");
   if (view.configured){
-    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid #1f4d33;border-radius:10px;padding:10px 12px;background:#0f2418">' +
+    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--green-line);border-radius:10px;padding:10px 12px;background:var(--green-bg)">' +
       '<span style="color:var(--green)">Connected ✓ — <b>' + esc(view.server_name || view.url) + "</b></span>" +
       (view.server_name ? '<span class="dim small mono">' + esc(view.url) + "</span>" : "") +
       '<span style="flex:1"></span>' +
@@ -2383,7 +2600,7 @@ function renderOrganizePlan(resultHTML){
   if ((p.collisions||[]).length){
     h += '<h3 style="margin:16px 0 6px;color:var(--red)">Collisions — these do NOT move</h3><div style="overflow-x:auto"><table><thead><tr><th>Would land on</th><th>From</th><th>Reason</th></tr></thead><tbody>' +
       p.collisions.map(c => (c.sources||[]).map((s, i) =>
-        '<tr style="background:#2a1518"><td class="mono">' + (i === 0 ? esc(orgRel(c.target)) : "") + '</td><td class="mono dim">' + esc(orgRel(s)) + '</td><td class="small">' + (i === 0 ? esc(c.reason) : "") + "</td></tr>").join("")).join("") +
+        '<tr style="background:var(--red-bg)"><td class="mono">' + (i === 0 ? esc(orgRel(c.target)) : "") + '</td><td class="mono dim">' + esc(orgRel(s)) + '</td><td class="small">' + (i === 0 ? esc(c.reason) : "") + "</td></tr>").join("")).join("") +
       "</tbody></table></div>";
   }
   if ((p.unidentified||[]).length){
@@ -2594,7 +2811,7 @@ function renderLinkPlan(resultHTML){
   }
   if ((p.target_conflicts||[]).length){
     h += '<h3 style="margin:16px 0 6px;color:var(--red)">Target conflicts — occupied, never overwritten</h3><div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Blocked source(s)</th><th>What is there</th><th>Reason</th></tr></thead><tbody>' +
-      p.target_conflicts.map(c => '<tr style="background:#2a1518"><td class="mono">' + esc(linkRelTgt(c.target)) + '</td><td class="mono dim">' + (c.sources||[]).map(s => esc(linkRelSrc(s))).join("<br>") + attached(c.attached_files) + '</td><td class="small">' + esc(c.occupant) + '</td><td class="small">' + esc(c.reason) + "</td></tr>").join("") +
+      p.target_conflicts.map(c => '<tr style="background:var(--red-bg)"><td class="mono">' + esc(linkRelTgt(c.target)) + '</td><td class="mono dim">' + (c.sources||[]).map(s => esc(linkRelSrc(s))).join("<br>") + attached(c.attached_files) + '</td><td class="small">' + esc(c.occupant) + '</td><td class="small">' + esc(c.reason) + "</td></tr>").join("") +
       "</tbody></table></div>";
   }
   if ((p.unlinkable||[]).length){
@@ -2899,6 +3116,46 @@ function renderHistory(list){
         "<td>" + deltaCell(e.delta) + "</td></tr>";
     }).join("") + "</tbody></table></div>";
 }
+
+/* ================= Theme (v1.2.0) =================
+   A theme is a palette of CSS variables scoped under
+   [data-theme="<id>"] on <html>; :root itself is "midnight",
+   the original look. The choice persists server-side in
+   config ("theme") like every preference, and is mirrored to
+   localStorage so the tiny <head> script can paint it before
+   first paint on the next load — the server copy reconciles
+   on load and wins (refreshSettings calls applyTheme with it).
+   Choosing in either control applies immediately: the preview
+   is the choice, and it is saved at once — not on the Settings
+   form's Save button. */
+const THEMES = ["midnight", "daylight", "ocean", "ember", "forest", "plum"];
+const THEME_NAMES = {midnight: "Midnight", daylight: "Daylight", ocean: "Ocean", ember: "Ember", forest: "Forest", plum: "Plum"};
+function themeValid(t){ return THEMES.indexOf(t) >= 0; }
+function currentTheme(){
+  const t = document.documentElement ? document.documentElement.getAttribute("data-theme") : null;
+  return themeValid(t) ? t : "midnight";
+}
+function applyTheme(t, persist){
+  if (!themeValid(t)) t = "midnight";
+  if (document.documentElement) document.documentElement.setAttribute("data-theme", t);
+  try { localStorage.setItem("wkl-theme", t); } catch (e) { /* mirror is best-effort */ }
+  const sel = $("theme-select"); if (sel) sel.value = t;
+  document.querySelectorAll('input[name="wkl-theme"]').forEach(r => { r.checked = (r.value === t); });
+  const nm = $("theme-active-name"); if (nm) nm.textContent = THEME_NAMES[t];
+  if (persist) persistTheme(t);
+}
+async function persistTheme(t){
+  try {
+    if (!currentCfg) currentCfg = await api.getConfig();
+    if (currentCfg.theme === t) return;
+    currentCfg = await api.saveConfig(Object.assign({}, currentCfg, {theme: t}));
+  } catch (e) { /* applied locally regardless; the server copy reconciles on next load */ }
+}
+$("theme-select").addEventListener("change", () => applyTheme($("theme-select").value, true));
+document.querySelectorAll('input[name="wkl-theme"]').forEach(r => {
+  r.addEventListener("change", () => { if (r.checked) applyTheme(r.value, true); });
+});
+applyTheme(currentTheme(), false);
 
 /* ================= Boot ================= */
 async function refreshAll(){

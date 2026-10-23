@@ -79,6 +79,13 @@ type Config struct {
 	// restarts. Written by the scheduler itself; user edits to
 	// it are meaningless but harmless.
 	ScheduleLastRunUnix int64 `json:"schedule_last_run_unix,omitempty"`
+	// Theme (v1.2.0): the UI theme id (themes.go) — a preference
+	// like WantedLanguages, NOT tuning: ResetTuning deliberately
+	// leaves it alone. The palettes live in the page's CSS; the
+	// config only carries the chosen id so the choice follows
+	// the user across browsers. Absent/unknown = "midnight",
+	// the original palette.
+	Theme string `json:"theme,omitempty"`
 }
 
 // StreamInfo is the flattened per-stream view of an ffprobe stream that
