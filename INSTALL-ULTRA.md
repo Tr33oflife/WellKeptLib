@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.4.0)
+# Install — Ultra.cc (WellKeptLib v1.4.1)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,28 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.4.1:** two fixes to the link library:
+
+- **Extras in pack-level folders now find their show.**
+  When a whole series arrives as one pack — a folder
+  holding the episodes, maybe a movie, and an extras
+  folder of its own — v1.4.0 left the pack's extras behind
+  as "extra content", because the pack folder held more
+  than one work and the app would not guess. The app now
+  reads the pack folder's own name to tell which work the
+  extras belong to, so featurettes, shorts and creditless
+  openings in pack-level folders get their hardlink in the
+  show's `extras` folder like any other extra. A folder
+  that genuinely mixes two different series still refuses
+  rather than guessing — those extras stay listed as
+  not identified.
+- **Samples are labeled as samples.** Sample files (the
+  short junk previews) used to be listed under the same
+  "extra content" reason as real extras, which made the
+  extras count look bigger than it was. They now carry
+  their own reason, "sample — left in place". Samples
+  still never link — this is only the label.
 
 **New in v1.4.0:** three additions to the link library,
 each with its own switch under Settings → Link library

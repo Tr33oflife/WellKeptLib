@@ -138,16 +138,18 @@ func TestLinkExtras140FixtureTree(t *testing.T) {
 		t.Errorf("extra target %s is not inside its work's extras folder", e.Target)
 	}
 
-	// Samples never link: all three stay not-identified with
-	// the extra-content reason, exactly as before v1.4.0.
+	// Samples never link: all three stay not-identified.
+	// v1.4.1 deliberate label split: they carry the sample
+	// reason, not the extra-content reason (classification
+	// and outcome unchanged — see RESULTS-1.4.1).
 	for _, rel := range []string{
 		"Fixture Show (2020)/Sample/Fixture Show - Trailer-sample.mkv",
 		"Fixture Show (2020)/DVD Extras/Fixture Show - Gag Reel-sample.mkv",
 		"Solo Film (2021)/Sample/Solo Film (2021)-featurette.mkv",
 	} {
 		ni := notIdentifiedFor(plan, paths[rel])
-		if ni == nil || ni.Reason != "extra content — left in place" {
-			t.Errorf("sample %s: not_identified = %+v, want the extra-content reason", rel, ni)
+		if ni == nil || ni.Reason != "sample — left in place" {
+			t.Errorf("sample %s: not_identified = %+v, want the sample reason", rel, ni)
 		}
 	}
 	// The ownerless extra stays not-identified too.
@@ -185,9 +187,12 @@ func TestLinkExtras140FixtureTree(t *testing.T) {
 	}
 }
 
-// Toggle OFF reproduces the pre-1.4.0 plan: every extras file
-// is not-identified with the extra-content reason, no extras
-// entries exist, and the rest of the plan is unchanged.
+// Toggle OFF reproduces the pre-1.4.0 plan outcomes: every
+// extras file is not-identified, no extras entries exist,
+// and the rest of the plan is unchanged. (v1.4.1: sample
+// files carry the sample reason in both switch states —
+// the label split is orthogonal to the toggle; outcomes
+// are what parity pins.)
 func TestLinkExtras140ToggleOffParity(t *testing.T) {
 	requireIdentity(t)
 	src, tgt, paths := buildExtrasFixture140(t)
@@ -215,10 +220,19 @@ func TestLinkExtras140ToggleOffParity(t *testing.T) {
 		"Solo Film (2021)/Sample/Solo Film (2021)-featurette.mkv",
 		"Mystery Show/DVD Extras/Mystery Show - Trailer.mkv",
 	}
+	sampleFiles := map[string]bool{
+		"Fixture Show (2020)/Sample/Fixture Show - Trailer-sample.mkv":      true,
+		"Fixture Show (2020)/DVD Extras/Fixture Show - Gag Reel-sample.mkv": true,
+		"Solo Film (2021)/Sample/Solo Film (2021)-featurette.mkv":           true,
+	}
 	for _, rel := range extraFiles {
+		want := "extra content — left in place"
+		if sampleFiles[rel] {
+			want = "sample — left in place"
+		}
 		ni := notIdentifiedFor(off, paths[rel])
-		if ni == nil || ni.Reason != "extra content — left in place" {
-			t.Errorf("toggle off: %s not_identified = %+v, want the extra-content reason", rel, ni)
+		if ni == nil || ni.Reason != want {
+			t.Errorf("toggle off: %s not_identified = %+v, want reason %q", rel, ni, want)
 		}
 	}
 	// The non-extras plan is identical: same videos, same

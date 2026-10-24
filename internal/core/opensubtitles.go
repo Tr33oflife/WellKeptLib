@@ -56,7 +56,7 @@ var osAPIBase = "https://api.opensubtitles.com/api/v1"
 
 // osUserAgent identifies the app on every API call (the API
 // requires a descriptive User-Agent).
-const osUserAgent = "WellKeptLib v1.4.0"
+const osUserAgent = "WellKeptLib v1.4.1"
 
 // osHTTPClient bounds every OpenSubtitles call.
 var osHTTPClient = &http.Client{Timeout: 30 * time.Second}

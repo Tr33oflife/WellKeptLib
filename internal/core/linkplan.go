@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -590,6 +591,13 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 						reason = ""
 					}
 				}
+			}
+			if reason == reasonExtraLeftInPlace {
+				// v1.4.1: a sample-gated extra (or an extra
+				// with the link-extras switch off) carries
+				// the sample label when it is one — see
+				// extraLeftReason.
+				reason = extraLeftReason(f, absSource)
 			}
 			if reason != "" {
 				vp.Status = "unidentified"
@@ -1859,40 +1867,103 @@ func (b *linkPlanBuilder) assignSpecialNumbers(specials []pendingSpecial, absTar
 	}
 }
 
+// The not-identified reasons for a parser-classified extra
+// that stays in place. v1.4.1: sample-gated files carry their
+// own label — under the shared extra-content label, the junk
+// previews on the owner's tree inflated the extras count in
+// the grouped plan view and the problems export. The label
+// is the only change: samples are classified, gated and left
+// in place exactly as before.
+const (
+	reasonExtraLeftInPlace  = "extra content — left in place"
+	reasonSampleLeftInPlace = "sample — left in place"
+)
+
+// extraLeftReason labels a left-in-place extra: the sample
+// label for a sample-gated file, the extra-content label for
+// everything else.
+func extraLeftReason(f orgFile, root string) string {
+	if isSamplePath(f, root) {
+		return reasonSampleLeftInPlace
+	}
+	return reasonExtraLeftInPlace
+}
+
+// extraWorkFacts is the identity of one target-built work as
+// planExtras sees it: the normalized titles and years its
+// videos parsed to, plus a representative source path.
+type extraWorkFacts struct {
+	titles map[string]bool
+	years  map[int]bool
+	rep    string // smallest source path, for determinism
+}
+
 // planExtras resolves each diverted extra's owning work and
-// builds its link candidate (Pass 2.5). The owner rule: walk
-// the extra's folder chain upward — its own folder first —
-// and let the FIRST folder whose subtree holds target-built
-// videos decide: exactly one work in that subtree owns the
-// extra; more than one refuses (never a guess). The extra's
-// target is <owner work folder>/extras/<cleaned title>, the
-// documented Jellyfin catch-all extras folder (Jellyfin
-// documentation, "Movies" — media organization, Extras
-// section: extras for movies, series and seasons live in
-// subfolders of the work's folder, "extras" being the
-// generic one). Extras with no unambiguous owner, or an
-// empty cleaned title, stay not-identified with the
-// pre-1.4.0 reason.
+// builds its link candidate (Pass 2.5). The extra's target is
+// <owner work folder>/extras/<cleaned title>, the documented
+// Jellyfin catch-all extras folder (Jellyfin documentation,
+// "Movies" — media organization, Extras section: extras for
+// movies, series and seasons live in subfolders of the work's
+// folder, "extras" being the generic one).
+//
+// The owner rule walks the extra's folder chain upward — its
+// own folder first — and the FIRST folder whose subtree holds
+// target-built videos decides:
+//
+//   - exactly one work in that subtree owns the extra (the
+//     v1.4.0 rule, unchanged);
+//   - more than one work: the folder's OWN identity decides
+//     (v1.4.1). The one-work rule refused every pack-level
+//     extra on the owner's tree: a pack root holding a whole
+//     series plus a movie, or one series registered under
+//     two folder identities (loose episodes that parse
+//     year-less next to season folders that pick the pack's
+//     year up), holds two work entries at the deciding
+//     folder even though the extra's chain names its owner
+//     plainly. The folder name is cleaned with the parser's
+//     own folder primitives and matched against the
+//     candidate works' identities (identityOwnedWork). No
+//     identity match — or a tie — keeps walking up; nothing
+//     is guessed.
+//
+// Because the walk is deepest-first, a movie's own folder
+// claims its extras before any pack-level identity is
+// consulted — the most specific context wins. Evidence is
+// every target-built video, whatever its plan state (group
+// winner, collision alternate, already-linked, unlinkable):
+// targets are assigned in Pass 1/1.5 and never cleared, so
+// a re-plan over an already-linked tree resolves the same
+// owners as the first plan. Extras with no unambiguous
+// owner, or an empty cleaned title, stay not-identified.
 func (b *linkPlanBuilder) planExtras(extras []extraItem, videos []*videoPlan, absSource, absTarget string) []*linkCandidate {
 	if len(extras) == 0 {
 		return nil
 	}
-	// subtreeWorks[dir][workDir] = one source path of that
-	// work under dir (the smallest, for determinism).
-	subtreeWorks := map[string]map[string]string{}
+	works := map[string]*extraWorkFacts{}
+	// subtreeWorks[dir][workDir] = workDir has a target-built
+	// video somewhere under dir.
+	subtreeWorks := map[string]map[string]bool{}
 	for _, vp := range videos {
 		if vp.Target == "" || vp.WorkDir == "" {
 			continue
 		}
+		wf := works[vp.WorkDir]
+		if wf == nil {
+			wf = &extraWorkFacts{titles: map[string]bool{}, years: map[int]bool{}, rep: vp.File.Path}
+			works[vp.WorkDir] = wf
+		}
+		wf.titles[vp.Parsed.NormTitle] = true
+		wf.years[vp.Parsed.Year] = true
+		if vp.File.Path < wf.rep {
+			wf.rep = vp.File.Path
+		}
 		for d := vp.File.Dir; ; d = filepath.Dir(d) {
 			m := subtreeWorks[d]
 			if m == nil {
-				m = map[string]string{}
+				m = map[string]bool{}
 				subtreeWorks[d] = m
 			}
-			if cur, ok := m[vp.WorkDir]; !ok || vp.File.Path < cur {
-				m[vp.WorkDir] = vp.File.Path
-			}
+			m[vp.WorkDir] = true
 			if d == absSource || filepath.Dir(d) == d {
 				break
 			}
@@ -1902,19 +1973,20 @@ func (b *linkPlanBuilder) planExtras(extras []extraItem, videos []*videoPlan, ab
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].file.Path < sorted[j].file.Path })
 	var out []*linkCandidate
 	for _, it := range sorted {
-		var workDir, ownerSource string
+		var workDir string
 		owned := false
 		for d := it.file.Dir; ; d = filepath.Dir(d) {
-			if m, ok := subtreeWorks[d]; ok && len(m) > 0 {
+			if m := subtreeWorks[d]; len(m) > 0 {
 				if len(m) == 1 {
-					for wd, src := range m {
-						workDir, ownerSource = wd, src
+					for wd := range m {
+						workDir = wd
 					}
 					owned = true
+				} else if wd, ok := identityOwnedWork(d, m, works); ok {
+					workDir, owned = wd, true
 				}
-				break // the deepest folder with any work decides
 			}
-			if d == absSource || filepath.Dir(d) == d {
+			if owned || d == absSource || filepath.Dir(d) == d {
 				break
 			}
 		}
@@ -1925,17 +1997,114 @@ func (b *linkPlanBuilder) planExtras(extras []extraItem, videos []*videoPlan, ab
 		}
 		if target == "" || !pathWithinRoot(absTarget, target) {
 			b.plan.NotIdentified = append(b.plan.NotIdentified, LinkSkip{
-				Path: it.file.Path, Reason: "extra content — left in place",
+				Path: it.file.Path, Reason: extraLeftReason(it.file, absSource),
 				Parsed: linkParsedFact(it.parsed), Ext: it.file.Ext, Size: it.file.Size,
 			})
 			continue
 		}
 		out = append(out, &linkCandidate{
 			file: it.file, target: target, kind: "extra",
-			title: it.parsed.Title, ownerSource: ownerSource,
+			title: it.parsed.Title, ownerSource: works[workDir].rep,
 		})
 	}
 	return out
+}
+
+// folderIdentity cleans ONE folder name to the identity it
+// declares — its normalized title and the year it carries —
+// with the parser's own folder-title primitives: the title is
+// cleanTokens over stripParenFurniture (the pair parseName
+// applies to a series folder), the year is reYear over the
+// raw name. Pack furniture trails the title in these names
+// ("… Season 1-3 S01-S03 (576p …)"), so callers match the
+// result by token prefix, never by equality.
+func folderIdentity(name string) (normTitle string, year int) {
+	var tags []string
+	title := strings.Join(cleanTokens(stripParenFurniture(strings.TrimSpace(name)), &tags), " ")
+	if ym := reYear.FindString(name); ym != "" {
+		year, _ = strconv.Atoi(ym)
+	}
+	return normalizeTitle(title), year
+}
+
+// identityOwnedWork decides which of the candidate works a
+// folder's own identity names (v1.4.1). A work matches when
+// its normalized title LEADS the folder's cleaned title
+// (equal, or a token-boundary prefix — the folder name leads
+// with the work's name and the pack furniture trails it) and
+// its year does not contradict the folder's year: a work
+// carrying the folder's exact year outranks a year-less work
+// of the same title, and a work with a different known year
+// never matches. Among the survivors the longest title match
+// wins (the most specific name); a tie is not a decision.
+func identityOwnedWork(dir string, cands map[string]bool, works map[string]*extraWorkFacts) (string, bool) {
+	fTitle, fYear := folderIdentity(filepath.Base(dir))
+	if fTitle == "" {
+		return "", false
+	}
+	matchLen := func(w *extraWorkFacts) int {
+		best := -1
+		for t := range w.titles {
+			if fTitle == t || strings.HasPrefix(fTitle, t+" ") {
+				if len(t) > best {
+					best = len(t)
+				}
+			}
+		}
+		return best
+	}
+	var exactTier, zeroTier []string
+	lengths := map[string]int{}
+	for wd := range cands {
+		w := works[wd]
+		ml := matchLen(w)
+		if ml < 0 {
+			continue
+		}
+		lengths[wd] = ml
+		if fYear == 0 {
+			exactTier = append(exactTier, wd)
+			continue
+		}
+		hasExact, hasOther := false, false
+		for y := range w.years {
+			switch {
+			case y == fYear:
+				hasExact = true
+			case y != 0:
+				hasOther = true
+			}
+		}
+		switch {
+		case hasOther:
+			// A different known year contradicts the folder.
+		case hasExact:
+			exactTier = append(exactTier, wd)
+		default:
+			// Every year the work carries is unknown.
+			zeroTier = append(zeroTier, wd)
+		}
+	}
+	pick := func(list []string) (string, bool) {
+		top, count := -1, 0
+		winner := ""
+		for _, wd := range list {
+			switch {
+			case lengths[wd] > top:
+				top, winner, count = lengths[wd], wd, 1
+			case lengths[wd] == top:
+				count++
+			}
+		}
+		if count == 1 {
+			return winner, true
+		}
+		return "", false
+	}
+	if len(exactTier) > 0 {
+		return pick(exactTier)
+	}
+	return pick(zeroTier)
 }
 
 // linkScanOverlapWarnings computes the scan-root overlap

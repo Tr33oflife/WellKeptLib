@@ -270,7 +270,7 @@ func buildVideoTarget(destinationRoot string, f orgFile, pn ParsedName) (target,
 		// Extras (trailers, featurettes, deleted scenes, …) are
 		// identified — the parser classified them on purpose —
 		// but they are not movies or episodes and never move.
-		return "", "", "", "", "extra content — left in place"
+		return "", "", "", "", reasonExtraLeftInPlace
 	default:
 		return "", "", "", "", "couldn't identify this file"
 	}
@@ -368,6 +368,11 @@ func PlanOrganize(root string) (*OrganizePlan, error) {
 			}
 			vp := &videoPlan{File: f, Parsed: parseName(f.Path, absRoot)}
 			target, targetDir, targetStem, workDir, reason := buildVideoTarget(absRoot, f, vp.Parsed)
+			if reason == reasonExtraLeftInPlace {
+				// v1.4.1: samples carry their own label in
+				// move mode too — see extraLeftReason.
+				reason = extraLeftReason(f, absRoot)
+			}
 			if reason != "" {
 				vp.Status = "unidentified"
 				plan.Unidentified = append(plan.Unidentified, OrganizeSkip{Path: f.Path, Reason: reason})

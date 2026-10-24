@@ -84,7 +84,15 @@ func bulkSame(a, b []int) bool {
 	return true
 }
 
-func TestBulkExport131ParserRegression(t *testing.T) {
+// loadBulkExport is the ONE loader for the owner's real-export
+// corpus. Every corpus consumer in this file goes through it, so
+// there is exactly one not-found/parse failure path to know
+// about. (v1.4.0 shipped with two independent loaders; the
+// public line's standing skip merge patched only one of them
+// and a standalone clone failed the other instead of skipping.
+// One loader removes that trap.)
+func loadBulkExport(t *testing.T) bulkExport {
+	t.Helper()
 	var raw []byte
 	var err error
 	for _, cand := range []string{
@@ -97,15 +105,15 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 		}
 	}
 	if err != nil {
-		// PUBLIC-TREE NOTE: the corpus above is the owner's real
-		// link-problems export, which is NOT shipped in the public
-		// repo (it carries real library paths). In a standalone
-		// clone this test therefore skips; it runs in full where
-		// the verification copies exist. The two fractional-misfire
-		// victims are also pinned verbatim in parser_131_test.go,
-		// and the twelve v1.3.6 extras flips in
-		// parser_extras_136_test.go, so a clone still covers
-		// every named fix.
+		// PUBLIC-TREE NOTE: the corpus is the owner's real
+		// link-problems export, which is NOT shipped in the
+		// public repo (it carries real library paths). In a
+		// standalone clone the corpus tests therefore skip;
+		// they run in full where the verification copies
+		// exist. The named victims and flips the corpus tests
+		// cover are also pinned verbatim in parser_131_test.go,
+		// parser_extras_136_test.go, and the linkplan real-name
+		// tests, so a clone still covers every named fix.
 		t.Skipf("real export corpus not present in this tree (tried verification-1.3.1 and verification-1.3.0 copies): %v", err)
 	}
 	var doc bulkExport
@@ -115,6 +123,11 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 	if doc.SourceRoot == "" {
 		t.Fatal("export has no source_root")
 	}
+	return doc
+}
+
+func TestBulkExport131ParserRegression(t *testing.T) {
+	doc := loadBulkExport(t)
 	// The two fractional-misfire victims and their corrected
 	// identities (kind/title/season/episodes/special).
 	victims := map[string]bulkParsed{
@@ -253,29 +266,7 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 // relative to the export's own source root, read from the
 // document at runtime.
 func TestBulk140PlannerPredicateSweep(t *testing.T) {
-	var raw []byte
-	var err error
-	for _, cand := range []string{
-		"../../../verification-1.3.1/real-export-2026-10-24.json",
-		"../../../verification-1.3.0/real-export-2026-10-24.json",
-	} {
-		raw, err = os.ReadFile(cand)
-		if err == nil {
-			break
-		}
-	}
-	if err != nil {
-		// PUBLIC-TREE NOTE: same corpus, same rule as the
-		// regression above — the real export is not shipped in
-		// the public repo, so a standalone clone skips; the ten
-		// named qualifiers are also exercised end-to-end by
-		// TestLink140RealNames, which needs no corpus.
-		t.Skipf("real export corpus not present in this tree (tried verification-1.3.1 and verification-1.3.0 copies): %v", err)
-	}
-	var doc bulkExport
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatalf("parse export: %v", err)
-	}
+	doc := loadBulkExport(t)
 	wantSpecials := map[string]bool{
 		"Creepshow.S01-S04.BDRip.x264-Scene/S02/Creepshow.S02.A.Creepshow.Animated.Special.BDRip.x264-BORDURE/Creepshow.S02.A.Creepshow.Animated.Special.BDRip.x264-BORDURE.mkv":                                      true,
 		"Creepshow.S01-S04.BDRip.x264-Scene/S02/Creepshow.S02.A.Creepshow.Holiday.Special.BDRip.x264-BORDURE/Creepshow.S02.A.Creepshow.Holiday.Special.BDRip.x264-BORDURE.mkv":                                        true,

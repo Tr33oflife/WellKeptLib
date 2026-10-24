@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.4.0)
+# Install — Windows (WellKeptLib v1.4.1)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.4.0-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.4.1-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,28 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.4.1
+
+- **Extras in pack-level folders now find their show.**
+  When a whole series arrives as one pack — a folder
+  holding the episodes, maybe a movie, and an extras
+  folder of its own — v1.4.0 left the pack's extras behind
+  as "extra content", because the pack folder held more
+  than one work and the app would not guess. The app now
+  reads the pack folder's own name to tell which work the
+  extras belong to, so featurettes, shorts and creditless
+  openings in pack-level folders get their hardlink in the
+  show's `extras` folder like any other extra. A folder
+  that genuinely mixes two different series still refuses
+  rather than guessing — those extras stay listed as
+  not identified.
+- **Samples are labeled as samples.** Sample files (the
+  short junk previews) used to be listed under the same
+  "extra content" reason as real extras, which made the
+  extras count look bigger than it was. They now carry
+  their own reason, "sample — left in place". Samples
+  still never link — this is only the label.
 
 ## What's new in v1.4.0
 

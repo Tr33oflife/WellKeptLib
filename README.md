@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.4.0
+- **Version:** 1.4.1
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -20,8 +20,9 @@ double-click `.exe` on Windows.
 ## Screenshots
 
 Taken from a running 1.2.0 instance (the UI is
-unchanged in 1.3.6 — a parser fix; 1.4.0 adds the
-Link-library switches and plan badges; 1.3.5 added a
+unchanged in 1.3.6 — a parser fix; 1.4.0 added the
+Link-library switches and plan badges (page unchanged
+in 1.4.1 — a planner fix and a label split); 1.3.5 added a
 progress bar for link builds; 1.3.4 changed only
 the link plan's presentation — 0-BYTE flags, a grouped
 Skipped summary, collapsible sections; 1.3.3 added extra
@@ -199,8 +200,10 @@ create, collisions, and skips, before anything is written:**
   documented catch-all) instead of being left behind —
   link mode only, extras still never move, and samples
   never link. An extra links only when exactly one work
-  owns it; a folder chain mixing two works refuses rather
-  than guessing. **Specials get created Season 00
+  owns it; where a folder holds several works, the
+  folder's own name decides (since 1.4.1) — a folder
+  genuinely mixing two different series still refuses
+  rather than guessing. **Specials get created Season 00
   numbers:** a special with no episode number (holiday
   special, OVA, making-of) is assigned the next S00
   number for its series — created, never found in the
@@ -227,7 +230,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.4.0-public.zip` from the
+Get `WellKeptLib-1.4.1-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -329,7 +332,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.4.0 binaries. Three disclosed divergences — in test
+  1.4.1 binaries. Three disclosed divergences — in test
   files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
@@ -407,40 +410,39 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.4.0)
+## Verification (what was actually checked for 1.4.1)
 
-- Go test suite: **304 top-level tests, all passing**,
+- Go test suite: **310 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (304 PASS, 0 FAIL);
+  re-run on this published tree (310 PASS, 0 FAIL);
   `go vet` and `gofmt` clean; the race detector is clean
-  over the whole suite (295 carried + 9 new; the bulk
-  regression's new flip set is additive and is part of
-  this release's gate — no other expectation changed).
-- **Corpus gate:** all 843 basenames from the first real
-  link-problems export, gated at parse level AND at
-  planner-predicate level — exactly **26 permitted
-  deltas** (16 `[Extra]`-marker flips, 8 specials
-  gaining S00 numbers, 2 year-less Macross movies),
-  **0 unexplained**; the v1.3.1 victims and v1.3.6
-  flips behave as before. In this published tree both
-  corpus tests run in full; in a standalone clone they
-  skip — see the transparency note.
+  (304 carried + 6 new pack/label tests; two pre-existing
+  expectations deliberately updated — the sample label
+  split, disclosed in the release notes).
+- **Gates:** the 843-basename parser regression and the
+  1.4.0 predicate sweep pass untouched (no parser or
+  diversion change). The pack fixtures — carrying the
+  real file lists from the preserved problems exports —
+  refuse exactly **60** files under the 1.4.0 rule and
+  link all 60 under 1.4.1 (36 + 23 + 1, counted name by
+  name), each pack ending with zero not-identified; a
+  genuinely two-series pack still refuses on both
+  versions. In this published tree both corpus tests
+  run in full; in a standalone clone they skip — see
+  the transparency note.
 - Page checks: 173 ids looked up / 204 defined, all
-  resolve; the Node render harness passes **181/181**
-  online (stub CDN seam), with offline / blank /
-  disabled scenarios green as well — covering the
-  extras plan group, both new badges, and the three
-  switches (default ON, state riding the config POST).
-- Shipped-binary smoke: **111/111** — the full carried
+  resolve (the page is byte-identical to 1.4.0); the
+  Node render harness passes **181/181** online (stub
+  CDN seam), with offline / blank / disabled scenarios
+  green as well.
+- Shipped-binary smoke: **115/115** — the full carried
   battery (baseline 11/2/2/6, incident replay, link
   mode and the job flow, themes, icons, report/exports,
-  CLI codes, the 1.3.0–1.3.4 checks) plus 14 new 1.4.0
-  checks: the switches over the API, an
-  extras/specials/year-less plan over HTTP with flags
-  asserted, the export's flagged sections, an apply job
-  creating all six links with hardlink identity
-  verified, a fully incremental second plan, and the
-  undo job restoring the tree. The public package's
+  CLI codes, the 1.3.0–1.4.0 checks) plus 4 new 1.4.1
+  checks: a pack-shaped tree over HTTP — a series extra
+  landing in the series' extras folder, a movie extra in
+  the movie's, and the export's only not-found entry
+  carrying the new sample label. The public package's
   extracted binary passes the same smoke, and the
   installer walk passes **12/12** (with the honest
   limit that `systemctl` is shimmed in the sandbox
@@ -448,9 +450,9 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - Standalone clone proof: a clean copy of this tree,
   with fixtures generated by the shipped
   `fixtures/generate.sh`, passes `go test ./...` —
-  **302 PASS, 0 FAIL, 2 SKIP** (the two corpus tests in
-  `bulk_export_131_test.go`, which need the unshipped
-  real-export corpus; see the transparency note).
+  **308 PASS, 0 FAIL, 2 SKIP** (the two corpus tests,
+  which need the unshipped real-export corpus; see the
+  transparency note).
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -506,18 +508,20 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   live proof is a plan preview on a real tree: 0-BYTE
   flags on a zero-reporting pack, the grouped summary on
   a plan with thousands of skips, the folded sections.
-- **The 1.4.0 link additions are corpus-proven, not
-  live-proven.** The gates ran the real export's 843
-  names at parse and planner level plus fixture trees
-  and HTTP round trips. The live proof is the
-  maintainer's next preview: ~249 extras linking (of
-  294 — minus 45 samples and any owner-ambiguous), the
-  8 specials badged "S00 · assigned", the 2 Macross
-  movies badged "no year". The extras owner rule has a
-  stated coverage limit (a folder chain mixing two
-  works stays not-identified); a rerun of the problems
-  export measures exactly how much it affects a real
-  tree, since linked extras now drop out of not_found.
+- **The 1.4.0 link additions got their live run — and
+  1.4.1 awaits its own.** The maintainer's real 1.4.0
+  preview confirmed every 1.4.0 flip (extras linking,
+  assigned specials, year-less movies) and measured
+  the owner rule's coverage limit directly: 60 genuine
+  pack-level extras still refused, and 45 samples
+  sharing the extras reason. 1.4.1 fixes both, proven
+  against fixtures carrying those exact real file
+  lists; parts of the diagnosis are inferred (problem
+  exports never list healthy files — the Gunsmith
+  second work and the Boosh identity mix are proven by
+  the refusal mathematics, not observed). The live
+  proof of 1.4.1 is his next preview; he has not yet
+  installed it (1.4.0 is what's live on his install).
 - **The 1.3.6 extras fix is corpus-proven, not
   live-proven.** The gate above ran the real export's
   843 names with their real folder context; the live
@@ -589,6 +593,45 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.4.1
+
+- **Extras owner-rule fix: pack-level extras find their
+  work.** The 1.4.0 rule refused any extra whose deciding
+  folder held more than one work — which is exactly a
+  season-pack layout, so on the maintainer's real tree
+  60 genuine extras stayed behind (measured from his
+  1.4.0 preview). Now, at a multi-work folder, the
+  folder's OWN identity decides: the folder name is
+  cleaned with the parser's own primitives and matched
+  against the candidate works — title must lead, year
+  must not contradict (an exact year outranks a
+  year-less work of the same title; a different known
+  year never matches), longest title wins, ties keep
+  walking up. Nothing is guessed: a pack genuinely
+  mixing two different series with unattributable root
+  extras still refuses. Deepest-first order is
+  unchanged, so a movie's own extras keep their exact
+  1.4.0 targets, and a re-plan over an already-linked
+  tree returns the same owners (pinned end-to-end).
+  The 60 flips, name by name from the preserved
+  exports: 36 Mighty Boosh featurettes, 23 Regular Show
+  series extras, 1 Gunsmith Cats NCOP.
+- **Samples get their own label.** Sample-gated files
+  now report **"sample — left in place"** in both
+  planners and the problems export, instead of sharing
+  the "extra content" reason — on the maintainer's
+  tree exactly 45 records relabel. Label only: samples
+  still never link and never move. Two 1.4.0 test
+  expectations were deliberately updated for the new
+  string; every other outcome is unchanged.
+- **Test infrastructure:** the corpus tests'
+  duplicated loaders are unified into one shared
+  loader (`loadBulkExport`) — the two-loader shape is
+  what made a standalone clone fail instead of skip in
+  the first 1.4.0 public tree (see that release's
+  correction note); there is now exactly one
+  not-found path to know about.
 
 ## Release notes — 1.4.0
 
