@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.3.5"
+const Version = "1.3.6"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.

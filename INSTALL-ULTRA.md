@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.5)
+# Install — Ultra.cc (WellKeptLib v1.3.6)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,15 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.6:** one fix. A season folder whose name
+says it comes "with an extra episode" (for example a folder
+called `S06 w-extra ep11`) is no longer mistaken for an
+extras folder — the episodes inside it are now recognised
+as episodes and get their links, instead of being left in
+place as "extra content". Real extras folders (bonus discs,
+featurette packs, commentary folders) are recognised
+exactly as before; nothing else changed.
 
 **New in v1.3.5:** building the link library (and
 undoing a build) now runs in the background. Pressing

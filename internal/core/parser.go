@@ -293,20 +293,34 @@ func looseTokens(s string) []string {
 // "Show.S07.Extras.DVDRip.x264-W4F". The second condition is the
 // guard: a plain series folder named "Extras (2005)" carries
 // neither, so a series that happens to be CALLED Extras is safe.
+//
+// v1.3.6 narrowing: the extras word must sit ADJACENT to the
+// context token (immediately before or after it in the same
+// part's token list) — in a genuine pack folder the extras word
+// is part of the release-pack label, glued to the season/tag
+// tokens ("S01.EXTRAS.BDRip", "Season 4 - DVD Extras" — "dvd"
+// is a tag token —, "0 Extras"). The old anywhere-in-the-part
+// test also fired on "S06 w-extra ep11" — season 6 WITH an
+// extra episode, a natural-language folder note ("w" = with):
+// "extra" tokenizes out of "w-extra", but its neighbours are
+// "w" and "ep11", neither of them context, so the folder's
+// real episodes no longer classify as extras.
 func extraByPackFolder(dirParts []string) bool {
 	for _, part := range dirParts {
 		toks := looseTokens(part)
-		hasExtras, hasContext := false, false
-		for _, tok := range toks {
-			if extrasTokens[tok] {
-				hasExtras = true
+		for i, tok := range toks {
+			if !extrasTokens[tok] {
+				continue
 			}
-			if tok == "season" || reBareSeasonToken.MatchString(tok) || tagTokens[tok] {
-				hasContext = true
+			for _, j := range [2]int{i - 1, i + 1} {
+				if j < 0 || j >= len(toks) {
+					continue
+				}
+				n := toks[j]
+				if n == "season" || reBareSeasonToken.MatchString(n) || tagTokens[n] {
+					return true
+				}
 			}
-		}
-		if hasExtras && hasContext {
-			return true
 		}
 	}
 	return false

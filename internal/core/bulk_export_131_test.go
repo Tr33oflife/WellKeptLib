@@ -11,6 +11,15 @@ package core
 // Any other delta fails the test: parser entry points are
 // shared with scans and duplicates, so this corpus is the
 // blast-radius proof for the fractional narrowing.
+//
+// v1.3.6 amendment: the pack-extras adjacency narrowing adds
+// a second named flip set — the twelve What We Do in the
+// Shadows season-6 episodes the export recorded as "extra"
+// because their folder is "S06 w-extra ep11" (season 6 WITH
+// an extra episode, misread as a pack extras folder). They
+// must flip to their episode identities; every other outcome
+// in the corpus — including the 282 other entries the export
+// recorded as extras — must still match the export exactly.
 
 import (
 	"encoding/json"
@@ -81,7 +90,9 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 		// clone this test therefore skips; it runs in full where
 		// the verification copies exist. The two fractional-misfire
 		// victims are also pinned verbatim in parser_131_test.go,
-		// so a clone still covers both fixes.
+		// and the twelve v1.3.6 extras flips in
+		// parser_extras_136_test.go, so a clone still covers
+		// every named fix.
 		t.Skipf("real export corpus not present in this tree (tried verification-1.3.1 and verification-1.3.0 copies): %v", err)
 	}
 	var doc bulkExport
@@ -101,7 +112,26 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 			Kind: "episode", Title: "One Piece", Season: 13, Episodes: []int{438},
 		},
 	}
-	var checked, flipped int
+	// The v1.3.6 extras-adjacency flips: the twelve WWDITS S06
+	// episodes recorded as "extra" in the export, with the
+	// episode identities they must parse to now. S06E11B (the
+	// alternate-ending version) parses as plain episode 11 —
+	// the B marker is not a distinct episode identity.
+	extrasFlips136 := map[string]bulkParsed{
+		"What.We.Do.in.the.Shadows.S06E01.The.Return.of.Jerry.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":              {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{1}},
+		"What.We.Do.in.the.Shadows.S06E02.Headhunting.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                      {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{2}},
+		"What.We.Do.in.the.Shadows.S06E03.Sleep.Hypnosis.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                   {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{3}},
+		"What.We.Do.in.the.Shadows.S06E04.The.Railroad.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                     {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{4}},
+		"What.We.Do.in.the.Shadows.S06E05.Nandors.Army.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                     {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{5}},
+		"What.We.Do.in.the.Shadows.S06E06.Laszlos.Father.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                   {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{6}},
+		"What.We.Do.in.the.Shadows.S06E07.March.Madness.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                    {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{7}},
+		"What.We.Do.in.the.Shadows.S06E08.P.I.Undercover.New.York.1080p.AMZN.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":     {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{8}},
+		"What.We.Do.in.the.Shadows.S06E09.Come.Out.And.Play.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{9}},
+		"What.We.Do.in.the.Shadows.S06E10.The.Promotion.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                    {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{10}},
+		"What.We.Do.in.the.Shadows.S06E11.The.Finale.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv":                       {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{11}},
+		"What.We.Do.in.the.Shadows.S06E11B.The.Finale.and.Alternate.Ending.1080p.WEBRip.10Bit.DDP5.1.HEVC-d3g.mkv": {Kind: "episode", Title: "What We Do in the Shadows", Season: 6, Episodes: []int{11}},
+	}
+	var checked, flipped, extrasFlipped int
 	var deltas []string
 	check := func(path string, recorded *bulkParsed) {
 		t.Helper()
@@ -119,6 +149,16 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 					want.Kind, want.Title, want.Season, want.Episodes)
 			} else {
 				flipped++
+			}
+			return
+		}
+		if want, isFlip := extrasFlips136[base]; isFlip {
+			if got.Kind != want.Kind || got.Title != want.Title || got.Season != want.Season || !bulkSame(bulkEps(got.Episodes), want.Episodes) || got.Special != "" {
+				t.Errorf("v1.3.6 extras flip %s: got kind/title/season/episodes/special = %q/%q/%d/%v/%q, want %q/%q/%d/%v/\"\"",
+					base, got.Kind, got.Title, got.Season, bulkEps(got.Episodes), got.Special,
+					want.Kind, want.Title, want.Season, want.Episodes)
+			} else {
+				extrasFlipped++
 			}
 			return
 		}
@@ -140,11 +180,14 @@ func TestBulkExport131ParserRegression(t *testing.T) {
 	for _, nf := range doc.NotFound {
 		check(nf.Path, nf.Parsed)
 	}
-	t.Logf("bulk regression: %d basenames checked, %d victims flipped, %d unexplained deltas", checked, flipped, len(deltas))
+	t.Logf("bulk regression: %d basenames checked, %d victims flipped, %d v1.3.6 extras flips, %d unexplained deltas", checked, flipped, extrasFlipped, len(deltas))
 	if flipped != len(victims) {
 		t.Errorf("victims flipped = %d, want %d (a victim basename is missing from the export or did not flip)", flipped, len(victims))
 	}
+	if extrasFlipped != len(extrasFlips136) {
+		t.Errorf("v1.3.6 extras flips = %d, want %d (a WWDITS basename is missing from the export or did not flip)", extrasFlipped, len(extrasFlips136))
+	}
 	if len(deltas) > 0 {
-		t.Errorf("%d unexplained parse deltas (listed above) — the fractional narrowing changed more than the two victims", len(deltas))
+		t.Errorf("%d unexplained parse deltas (listed above) — the parser changed more than the named victims and flips", len(deltas))
 	}
 }

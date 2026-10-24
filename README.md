@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.3.5
+- **Version:** 1.3.6
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -19,7 +19,8 @@ double-click `.exe` on Windows.
 
 ## Screenshots
 
-Taken from a running 1.2.0 instance (1.3.5 adds a
+Taken from a running 1.2.0 instance (the UI is
+unchanged in 1.3.6 — a parser fix; 1.3.5 added a
 progress bar for link builds; 1.3.4 changed only
 the link plan's presentation — 0-BYTE flags, a grouped
 Skipped summary, collapsible sections; 1.3.3 added extra
@@ -205,7 +206,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.3.5-public.zip` from the
+Get `WellKeptLib-1.3.6-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -307,7 +308,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.3.5 binaries. Three disclosed divergences — in test
+  1.3.6 binaries. Four disclosed divergences — in test
   files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
@@ -315,7 +316,12 @@ to the internet.
   skips in a standalone clone (its corpus is a real export,
   not shipped here) and runs in full where the verification
   copies exist — the two fractional-misfire victims it
-  covers are also pinned verbatim in `parser_131_test.go`;
+  covers are also pinned verbatim in `parser_131_test.go`
+  (and the twelve v1.3.6 extras flips in
+  `parser_extras_136_test.go`, whose library-root path is
+  generalized to a neutral placeholder in this public
+  copy — the root is only used to derive relative folder
+  parts, so every asserted parse is identical);
   and the Ko-fi username default is **carried as-is**
   in this public edition by explicit owner decision
   (2026-10-23), as a scoped exception to the scrub rule
@@ -380,42 +386,44 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.3.5)
+## Verification (what was actually checked for 1.3.6)
 
-- Go test suite: **292 top-level tests, all passing**,
+- Go test suite: **295 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (292 PASS, 0 FAIL);
+  re-run on this published tree (295 PASS, 0 FAIL);
   `go vet` and `gofmt` clean; the race detector is clean
-  over the whole suite. No pre-existing Go test was
-  modified (284 carried + 8 new job tests, including an
-  equivalence test pinning job == synchronous apply:
-  same result, same manifest, same target tree).
+  over the whole suite. One pre-existing test gained a
+  named expectation set (the bulk regression's twelve
+  v1.3.6 extras flips — that change IS this release);
+  no other expectation changed (292 carried + 3 new
+  extras tests).
+- **Corpus gate:** the bulk regression re-parses all
+  843 basenames from the first real link-problems
+  export (with their real folder context) — exactly the
+  12 named extras flips, the 2 v1.3.1 victims as
+  before, **0 unexplained deltas**; all 282 other
+  entries the export recorded as extras still classify
+  as extras. In this published tree the test runs in
+  full (the corpus lives with the project's
+  verification copies); in a standalone clone it skips
+  — see the transparency note.
 - Page checks: 170 ids looked up / 201 defined, all
-  resolve; the Node render harness passes **172/172**
-  online (stub CDN seam), with offline / blank /
-  disabled scenarios green as well — including 4
-  dedicated reattach checks (running job gets its bar
-  back on Organize entry; just-finished job renders its
-  summary; vanished job gets the plain
-  progress-unavailable note).
+  resolve (the UI is unchanged in 1.3.6); the Node
+  render harness passes **172/172** online (stub CDN
+  seam), with offline / blank / disabled scenarios
+  green as well.
 - Shipped-binary smoke: **97/97** — the full carried
   battery (baseline 11/2/2/6, incident replay, link
-  mode, themes, icons, report/exports, CLI codes, the
-  1.3.0 export, the 1.3.1 keeper-evidence checks, the
-  1.3.2 Ko-fi checks, the 1.3.3 zero-size checks, the
-  1.3.4 page checks) plus 4 new job checks — and every
-  link apply/undo in the smoke now runs through the
-  background-job flow over real HTTP, ending in the
-  same on-disk assertions (real hardlinks, inode
-  identity, the source-untouched invariant). The
-  public package's extracted binary passes the same
-  smoke, and the installer walk passes **12/12** (with
-  the honest limit that `systemctl` is shimmed in the
-  sandbox walks).
+  mode and the background-job flow, themes, icons,
+  report/exports, CLI codes, the 1.3.0 export, the
+  1.3.1–1.3.4 checks). The public package's extracted
+  binary passes the same smoke, and the installer walk
+  passes **12/12** (with the honest limit that
+  `systemctl` is shimmed in the sandbox walks).
 - Standalone clone proof: a clean copy of this tree,
   with fixtures generated by the shipped
   `fixtures/generate.sh`, passes `go test ./...` —
-  **291 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
+  **294 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
   which needs the unshipped real-export corpus; see the
   transparency note).
 - **Default-theme equality, measured:** a headless-Chrome
@@ -473,6 +481,12 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   live proof is a plan preview on a real tree: 0-BYTE
   flags on a zero-reporting pack, the grouped summary on
   a plan with thousands of skips, the folded sections.
+- **The 1.3.6 extras fix is corpus-proven, not
+  live-proven.** The gate above ran the real export's
+  843 names with their real folder context; the live
+  proof is the maintainer's next preview — the twelve
+  episodes appearing as episodes, the genuine extras
+  staying put.
 - **The 1.3.5 background builds are fixture-proven.**
   The sandbox proves the job mechanics over HTTP
   (progress, refusals, reattach, inode identity); it
@@ -538,6 +552,37 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.3.6
+
+- **One parser fix: a season folder that comes "with an
+  extra episode" is no longer an extras folder.** The
+  pack-extras rule used to fire when an extras word and
+  a season/tag token appeared anywhere in the same
+  folder name — so every episode inside a folder named
+  e.g. `S06 w-extra ep11` (season 6 WITH an extra
+  episode) was classified "extra content — left in
+  place" and got no link. The extras word must now sit
+  directly beside a season or release-tag token, the
+  way it does in every genuine release-pack extras
+  folder. Real extras folders — `S01.EXTRAS.BDRip`
+  packs, `… - DVD Extras`, even a folder literally
+  named `0 Extras` — are recognised exactly as before.
+- **Measured, not guessed:** the fixed parser was run
+  over all 843 basenames from the first real
+  link-problems export — exactly 12 outcomes change
+  (the twelve misclassified episodes), 0 unexplained
+  deltas, and all 282 other recorded extras stay
+  extras. That check lives in the suite and fails on
+  any future delta outside the named sets.
+- One behavior worth knowing: an alternate-ending file
+  like `S06E11B` parses as a plain S06E11 episode (the
+  "B" is not a distinct episode identity), so in a link
+  plan it meets the standard E11 as a collision for the
+  same target, and keeper ranking decides — both copies
+  are visible in the collision.
+- Nothing else changes: no planner, UI, apply, undo,
+  export, or payload changes.
 
 ## Release notes — 1.3.5
 
