@@ -86,6 +86,31 @@ type Config struct {
 	// the user across browsers. Absent/unknown = "midnight",
 	// the original palette.
 	Theme string `json:"theme,omitempty"`
+	// KofiUsername (v1.3.2): the Ko-fi account the floating
+	// Donate button points at — a preference like Theme, NOT
+	// tuning: ResetTuning deliberately leaves it alone. A BLANK
+	// value disables the button entirely: the page must not
+	// even attempt the Ko-fi script load. The field is a plain
+	// string (no omitempty): a saved blank must survive a
+	// round trip as blank, distinct from a missing key (which
+	// loadConfig maps to the default — see the presence probe
+	// there). PUBLIC EDITION EXCEPTION (owner-decided
+	// 2026-10-23): the default is carried as-is, so the
+	// button works out of the box for public users donating
+	// to the maintainer. A blank value still disables it.
+	KofiUsername string `json:"kofi_username"`
+	// KofiEnabled (v1.3.2, owner-added mid-build): the
+	// "Show Ko-fi Donate button" toggle — a preference like
+	// KofiUsername, NOT tuning: ResetTuning deliberately
+	// leaves it alone. Default ON (the online-conditional
+	// behavior ships out of the box); OFF means the page
+	// never attempts the Ko-fi script load at all, regardless
+	// of connectivity or username. Like EmbeddedAudit, it
+	// needs the presence-aware load merge: a bool whose
+	// default is TRUE cannot use the "non-zero = present"
+	// rule, or an older config without the key would read
+	// as OFF.
+	KofiEnabled bool `json:"kofi_enabled"`
 }
 
 // StreamInfo is the flattened per-stream view of an ffprobe stream that

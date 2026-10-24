@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.3.1)
+# Install — Windows (WellKeptLib v1.3.2)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.3.1-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.3.2-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,18 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.3.2
+
+- **Ko-fi Donate button, online only.** When the app can
+  reach the internet, a floating Donate button appears;
+  when it can't, the button silently stays away — no error,
+  no broken page, and every tab works as before. Settings
+  has the Ko-fi username (prefilled, editable) and a "Show
+  Ko-fi Donate button" toggle, on by default. Toggle it off
+  and the app never even tries to load the button; clear
+  the username and the button is off entirely. A change
+  takes effect on the next page load.
 
 ## What's new in v1.3.1
 

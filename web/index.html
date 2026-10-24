@@ -749,6 +749,18 @@ try {
         <label class="theme-tile"><input type="radio" name="wkl-theme" value="plum"><span class="theme-swatches"><i style="background:#120a1c"></i><i style="background:#1d1233"></i><i style="background:#b678f0"></i></span>Plum</label>
       </div>
     </div>
+    <!-- Support (v1.3.2): the Ko-fi username the floating Donate
+         button points at. The button itself is NOT a footer
+         element — the Ko-fi overlay draws it floating (see
+         initKofi); this field only names the account. Blank
+         turns the button off entirely: no script request, no
+         button. A change takes effect on the next page load. -->
+    <div style="margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:18px">
+      <h2>Support</h2>
+      <div class="small"><input type="checkbox" id="cfg-kofi-enabled" style="vertical-align:-2px"> Show Ko-fi Donate button</div>
+      <label>Ko-fi username</label><input id="cfg-kofi" style="width:320px" placeholder="your-ko-fi-username">
+      <p class="dim small" style="margin:6px 0 0;max-width:760px">When the toggle is on, the floating Donate button appears when the app is online and silently stays away when it isn't — no error, nothing broken offline. Toggle off, and the app never even tries to load the button, whatever the connection. Leave the username blank to turn the button off entirely. A change takes effect on the next page load.</p>
+    </div>
     <div class="grid2">
       <div>
         <h2>Scanner settings</h2>
@@ -2031,6 +2043,16 @@ async function refreshSettings(){
   // the applied theme with it as settings load (no persist:
   // this IS the persisted value arriving).
   applyTheme((currentCfg && currentCfg.theme) || "midnight", false);
+  // Ko-fi (v1.3.2): one connectivity-gated attempt per page
+  // load — initKofi itself guards repeats, so a later
+  // refreshSettings (e.g. after a save) never re-draws; a
+  // toggle or username change takes effect on the next page
+  // load. The toggle reads !== false so an older config
+  // without the key still means ON, matching the server
+  // default.
+  initKofi(currentCfg && currentCfg.kofi_username, currentCfg && currentCfg.kofi_enabled !== false);
+  $("cfg-kofi-enabled").checked = currentCfg && currentCfg.kofi_enabled !== false;
+  if (document.activeElement !== $("cfg-kofi")) $("cfg-kofi").value = (currentCfg && currentCfg.kofi_username) || "";
   $("cfg-ffprobe").value = currentCfg.ffprobe_path || "";
   $("cfg-ffmpeg").value = currentCfg.ffmpeg_path || "";
   $("cfg-subconf").value = currentCfg.subtitle_confidence;
@@ -2103,6 +2125,8 @@ $("btn-cfg-save").addEventListener("click", async () => {
     subtitle_extract_timeout_sec: parseInt($("cfg-sub-timeout").value) || 45,
     subtitle_max_tracks: parseInt($("cfg-sub-tracks").value) || 6,
     embedded_audit: $("cfg-embedded-audit").checked,
+    kofi_enabled: $("cfg-kofi-enabled").checked,
+    kofi_username: $("cfg-kofi").value.trim(),
     wanted_languages: $("cfg-wanted-langs").value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
     // Automation (v1.0.0) rides the same save.
     schedule_enabled: $("cfg-schedule-enabled").checked,
@@ -3191,6 +3215,60 @@ document.querySelectorAll('input[name="wkl-theme"]').forEach(r => {
   r.addEventListener("change", () => { if (r.checked) applyTheme(r.value, true); });
 });
 applyTheme(currentTheme(), false);
+
+/* Ko-fi Donate button (v1.3.2): connectivity-gated, with a
+   Settings toggle (added mid-build at the owner's order).
+   The shape he approved first — "appear if there's internet
+   and not if there's not" — is the toggle-ON behavior. On
+   the first settings load of the page (which refreshAll runs
+   at boot), a non-blank username with the toggle ON triggers
+   ONE asynchronous script load; onload draws the floating
+   button with the owner's config, onerror drops it silently
+   (offline, or the CDN unreachable: no widget element, no
+   user-visible error, no retry storm, and every tab works
+   exactly as before). Toggle OFF means no request is
+   attempted at all, whatever the connection. A blank
+   username disables it fully too: no request is attempted
+   at all. The
+   overlay draws a FLOATING button by design — it is not a
+   footer element, even though the request first said
+   "footer"; the follow-up described the floating button, so
+   floating is the build, and no footer link was added. A
+   toggle or username change takes effect on the next page
+   load: this function deliberately never re-draws
+   mid-session, because the overlay offers no reliable
+   undraw and a second draw would duplicate the button.
+   window.__wklKofiSrc is a test
+   seam only (the smoke/harness stub stands in for the CDN);
+   production always uses the real Ko-fi URL. */
+let kofiAttempted = false;
+function initKofi(username, enabled){
+  if (kofiAttempted) return;
+  kofiAttempted = true;
+  if (enabled === false) return; /* toggle OFF: no request at all, whatever the connection */
+  if (!username) return; /* blank = disabled: no request at all */
+  const s = document.createElement("script");
+  s.async = true;
+  s.src = window.__wklKofiSrc || "https://storage.ko-fi.com/cdn/scripts/overlay-widget.js";
+  s.onload = () => {
+    try {
+      const w = window.kofiWidgetOverlay;
+      if (w && typeof w.draw === "function") {
+        w.draw(username, {
+          "type": "floating-chat",
+          "floating-chat.donateButton.text": "Donate",
+          "floating-chat.donateButton.background-color": "#323842",
+          "floating-chat.donateButton.text-color": "#fff"
+        });
+      }
+      /* No overlay after a successful load (CDN served
+         something unexpected) is treated like a load failure:
+         silent, no throw, no broken page. */
+    } catch (e) { /* best-effort only; the app never breaks for a button */ }
+  };
+  s.onerror = () => { /* offline or CDN unreachable: silent, single attempt */ };
+  document.head.appendChild(s);
+}
 
 /* ================= Boot ================= */
 async function refreshAll(){

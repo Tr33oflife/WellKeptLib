@@ -8,6 +8,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,33 @@ const (
 	// to if a Config ever reaches it unclamped).
 	defaultSubtitleMaxTracks = 6
 )
+
+// defaultKofiUsername (v1.3.2) is the Ko-fi Donate button
+// default. PUBLIC EDITION EXCEPTION (owner-decided 2026-10-23):
+// this default is carried as-is from the private build, so
+// donations from public users go to the maintainer. Scoped
+// exception to the scrub rule for this one default value
+// only — every other denylist item still applies in full.
+const defaultKofiUsername = "t4v3rn"
+
+// checkKofiUsername validates a Ko-fi handle for saving: blank
+// is the deliberate disable switch and always passes; anything
+// else must look like a handle (letters, digits, underscore,
+// hyphen, dot, max 64). A bad handle would otherwise silently
+// point the Donate button nowhere on every page load, so the
+// save fails naming the field instead.
+func checkKofiUsername(u string) error {
+	if len(u) > 64 {
+		return fmt.Errorf("kofi_username is too long (max 64 characters)")
+	}
+	for _, r := range u {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			continue
+		}
+		return fmt.Errorf("kofi_username may only contain letters, numbers, underscore, hyphen, and dot")
+	}
+	return nil
+}
 
 // clampTuningInt bounds v into [lo, hi]; a non-positive v (field
 // absent / cleared) yields def. Used by loadConfig and SaveConfig
@@ -72,6 +100,13 @@ func defaultConfig() *Config {
 		WebhookFlavor: "generic",
 		// v1.2.0: the UI theme defaults to the original palette.
 		Theme: DefaultTheme,
+		// v1.3.2: the Ko-fi username default. PUBLIC
+		// EDITION EXCEPTION (owner-decided 2026-10-23): carried
+		// as-is (see the KofiUsername field comment in model.go).
+		KofiUsername: defaultKofiUsername,
+		// v1.3.2: the Donate toggle defaults ON — the
+		// online-conditional behavior is what ships.
+		KofiEnabled: true,
 	}
 	if p, err := exec.LookPath("ffprobe"); err == nil {
 		c.FFprobePath = p
@@ -199,6 +234,25 @@ func loadConfig(dataDir string) (*Config, string) {
 	// the default rather than erroring or sticking the UI with
 	// a palette it does not have.
 	c.Theme = normalizeTheme(saved.Theme)
+	// v1.3.2: the Ko-fi username is presence-aware (the
+	// EmbeddedAudit pattern): an older config has no key and
+	// keeps the private default, but an explicit key —
+	// INCLUDING an explicit empty string — is honored exactly
+	// (trimmed), because blank is the disable switch. The
+	// plain saved.KofiUsername field cannot express this:
+	// absent and blank both decode to "".
+	var kofiProbe struct {
+		KofiUsername *string `json:"kofi_username"`
+		KofiEnabled  *bool   `json:"kofi_enabled"`
+	}
+	if err := json.Unmarshal(b, &kofiProbe); err == nil {
+		if kofiProbe.KofiUsername != nil {
+			c.KofiUsername = strings.TrimSpace(*kofiProbe.KofiUsername)
+		}
+		if kofiProbe.KofiEnabled != nil {
+			c.KofiEnabled = *kofiProbe.KofiEnabled
+		}
+	}
 	if saved.FFprobePath != "" {
 		c.FFprobePath = saved.FFprobePath
 	}

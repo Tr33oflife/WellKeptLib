@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -330,10 +331,37 @@ func (s *server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 
 // handleConfigSave -> Service.SaveConfig
 func (s *server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
-	var cfg core.Config
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
+	}
+	var cfg core.Config
+	if err := json.Unmarshal(body, &cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	// v1.3.2: Ko-fi presence is a wire-format fact, not a
+	// value — the current page always sends both keys (blank
+	// username = deliberately disabled, enabled=false =
+	// deliberately off), but a stale pre-1.3.2 tab has
+	// neither field, and its decoded "" / false must not
+	// wipe the stored handle or switch the button off. An
+	// absent key therefore keeps the current value; a
+	// present key (even blank / false) is used exactly as
+	// sent.
+	var probe struct {
+		KofiUsername *string `json:"kofi_username"`
+		KofiEnabled  *bool   `json:"kofi_enabled"`
+	}
+	if err := json.Unmarshal(body, &probe); err == nil {
+		current := s.svc.GetConfig()
+		if probe.KofiUsername == nil {
+			cfg.KofiUsername = current.KofiUsername
+		}
+		if probe.KofiEnabled == nil {
+			cfg.KofiEnabled = current.KofiEnabled
+		}
 	}
 	if err := s.svc.SaveConfig(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err)

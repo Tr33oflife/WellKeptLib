@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.1)
+# Install — Ultra.cc (WellKeptLib v1.3.2)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,14 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.2:** a Ko-fi Donate button that appears when
+the app is online and silently stays away when it isn't.
+Settings has a Ko-fi username (prefilled) and a "Show Ko-fi
+Donate button" toggle (on by default). Turn the toggle off
+and the app never even tries to load the button; leave the
+username blank and the button is off entirely. Everything
+else works exactly as before with no connection.
 
 **New in v1.3.1:** two fixes from the first real
 link-problems export. Link-plan keeper picks now always use

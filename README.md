@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.3.1
+- **Version:** 1.3.2
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -20,7 +20,8 @@ double-click `.exe` on Windows.
 ## Screenshots
 
 Taken from a running 1.2.0 instance (the UI is unchanged in
-1.3.1; 1.3.0 added one button) over a small synthetic
+1.3.2 apart from the Settings Support card added in 1.3.2;
+1.3.0 added one button) over a small synthetic
 demo library (the same generated fixture library the tests
 use — no real collection is shown). All shots use the
 default Midnight theme except the last, which shows
@@ -200,7 +201,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.3.1-public.zip` from the
+Get `WellKeptLib-1.3.2-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -302,16 +303,24 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.3.1 binaries. Two disclosed divergences, in test files
-  only: the fixture lookup helper additionally accepts this
-  repository's fixtures layout, and the fixture generator
-  script ships in `fixtures/`; and the bulk parser regression
-  in `bulk_export_131_test.go` skips in a standalone clone
-  (its corpus is a real export, not shipped here) and runs
-  in full where the verification copies exist — the two
-  fractional-misfire victims it covers are also pinned
-  verbatim in `parser_131_test.go`. No product code or test
-  assertion differs from the development tree. The public
+  1.3.2 binaries. Three disclosed divergences, in test files
+  and one default only: the fixture lookup helper
+  additionally accepts this repository's fixtures layout,
+  and the fixture generator script ships in `fixtures/`;
+  the bulk parser regression in `bulk_export_131_test.go`
+  skips in a standalone clone (its corpus is a real export,
+  not shipped here) and runs in full where the verification
+  copies exist — the two fractional-misfire victims it
+  covers are also pinned verbatim in `parser_131_test.go`;
+  and the Ko-fi username default is **carried as-is**
+  in this public edition by explicit owner decision
+  (2026-10-23), as a scoped exception to the scrub rule
+  for this one default value only: donations from public
+  users therefore go to the maintainer, and the button
+  works out of the box. The UI placeholder stays generic.
+  No other product code or test assertion differs from
+  the development tree, and every other scrub item still
+  applies in full. The public
   edition was produced from a
   private codebase by a scripted scrub gate: a denylist
   (personal names, usernames, hostnames, domains, private
@@ -361,26 +370,33 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.3.1)
+## Verification (what was actually checked for 1.3.2)
 
-- Go test suite: **273 top-level tests, all passing**,
+- Go test suite: **278 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (273 PASS, 0 FAIL);
+  re-run on this published tree (278 PASS, 0 FAIL);
   `go vet` and `gofmt` clean. No pre-existing test
-  expectation changed (266 carried + 7 new); the fixture
-  link plan's behavior is byte-identical to 1.3.0's.
-- Page checks: 160 ids looked up / 185 defined, all resolve;
-  the Node render harness passes **120/120**.
-- Shipped-binary smoke: **75/75** on the base build — the
+  expectation changed (273 carried + 5 new Ko-fi tests).
+- Page checks: 162 ids looked up / 187 defined, all resolve;
+  the Node render harness passes **128/128** online (stub
+  CDN seam), with offline / blank / disabled scenarios
+  green as well.
+- Shipped-binary smoke: **87/87** on the base build — the
   full carried battery (baseline 11/2/2/6, incident replay,
   link mode, themes, icons, report/exports, CLI codes, the
-  1.3.0 export checked field-by-field) plus 3 new 1.3.1
-  checks over HTTP (unprobed same-label copies collide on
-  one target; the larger copy is keeper; the keeper reason
-  cites real bytes, no bare "0 bytes"). The public
-  package's extracted binary passes the same smoke, and
-  the installer walk passes **12/12** (with the honest
-  limit that `systemctl` is shimmed in the sandbox walks).
+  1.3.0 export, the 1.3.1 keeper-evidence checks) plus 12
+  new Ko-fi checks over HTTP (fresh-dir handle default —
+  carried in this public edition by owner exception,
+  toggle default ON,
+  username round-trip, save-without-key keeps the handle,
+  persistence across restart, blank handling, tuning-
+  reset survival, invalid-handle save failure, toggle OFF
+  persistence, save-without-either-key keeps both, served
+  page carries the field + toggle + loader with no static
+  Ko-fi script tag). The public package's extracted binary
+  passes the same smoke, and the installer walk passes
+  **12/12** (with the honest limit that `systemctl` is
+  shimmed in the sandbox walks).
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -410,6 +426,15 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   and the tab icon on real machines are pending the
   maintainer's live test, as is the 1.1.1 Windows lock fix
   below.
+- **The Ko-fi button is not yet live-proven in a
+  browser.** The loader URL was fetch-checked (HTTP 200,
+  genuine overlay script), and the page wiring is proven
+  with a stub CDN in the render harness — but a real
+  browser load of the floating button is pending the
+  maintainer's own browser test. The public default is
+  the maintainer's handle by owner exception, so the
+  button works out of the box; blanking the field still
+  disables it entirely.
 - **The problems export has now seen a real tree — and
   1.3.1 is the result.** The first real link-problems
   export surfaced both defects fixed here. Honest boundary:
@@ -460,6 +485,33 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.3.2
+
+- **Ko-fi Donate button, online only.** Settings gains a
+  Support card: a "Show Ko-fi Donate button" toggle (on by
+  default) and a Ko-fi username field. Toggle ON + username
+  set + online → one async script load on page load draws
+  the floating Donate button (floating-chat, "Donate",
+  #323842 background, white text). Toggle ON + offline or
+  CDN unreachable → silent absence, no error, no retry,
+  every tab works as before. Toggle OFF → no script
+  request at all, whatever the connection. Blank username
+  → disables entirely, same as OFF. A change takes effect
+  on the next page load; both keys survive restart and
+  tuning reset, presence-aware on load and save.
+- **Public edition difference, stated plainly:** the
+  username default is carried as-is here, by explicit
+  owner decision (2026-10-23), as a scoped exception to
+  the scrub rule for this one default value only.
+  Donations from public users therefore go to the
+  maintainer, and the button works out of the box. A
+  user who wants a different account edits the field;
+  blank disables the button entirely. Every other
+  identifying item is still scrubbed as usual.
+- Nothing else changes: no other UI, scan, link, or
+  behavior changes beyond the Support card and the two
+  new config keys.
 
 ## Release notes — 1.3.1
 

@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.3.1"
+const Version = "1.3.2"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -560,6 +560,22 @@ func (s *Service) SaveConfig(in Config) error {
 		in.Theme = s.cfg.Theme
 	} else {
 		in.Theme = normalizeTheme(in.Theme)
+	}
+	// Ko-fi username (v1.3.2): trimmed and charset-checked;
+	// blank is authoritative here (the deliberate disable
+	// switch), NOT "not part of this save" — the theme rule
+	// above does not apply, because empty is a meaningful
+	// user intent for this field. The stale-page case (a
+	// pre-1.3.2 tab whose save carries no key at all) is
+	// handled in the handler, which pre-fills the current
+	// value before calling this method — by the time a save
+	// reaches here, the value is always deliberate. The
+	// KofiEnabled toggle rides the same rule: a plain bool,
+	// authoritative as sent, with the handler pre-filling
+	// the current value when the key is absent.
+	in.KofiUsername = strings.TrimSpace(in.KofiUsername)
+	if err := checkKofiUsername(in.KofiUsername); err != nil {
+		return err
 	}
 	// Roots saved through Settings get the same input hygiene as
 	// roots sent to StartScan (quotes/tilde/env expansion, v0.1.1).
