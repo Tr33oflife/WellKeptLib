@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.4)
+# Install — Ultra.cc (WellKeptLib v1.3.5)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,21 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.5:** building the link library (and
+undoing a build) now runs in the background. Pressing
+**Build links** starts the build and a progress bar shows
+where it is — the step it is on, how far through it is,
+the counts so far, and the file it is working on — ending
+with the usual build summary. A big build no longer has
+to finish inside one page request, so the gateway timeout
+error (HTTP 504) that a build of thousands of links could
+hit is gone. You can close or reload the page while a
+build runs: the build keeps going, and when you come back
+the Organize tab shows its progress — or its finished
+summary if it completed while you were away. Undo works
+the same way. Nothing about what gets built or undone
+changes; only how the work is run and watched.
 
 **New in v1.3.4:** copies that measure 0 bytes stand out
 in the hardlink preview — each one carries a red 0-BYTE

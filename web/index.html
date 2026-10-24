@@ -723,6 +723,23 @@ try {
     </div>
     <div id="org-plan"></div>
     <div id="link-plan" style="display:none"></div>
+    <!-- v1.3.5: link Apply/Undo run as server-side background
+         jobs (a big build outlasted the proxy timeout as one
+         synchronous request). This block is the job's home:
+         the live progress bar while it runs, and the final
+         summary when it finishes — rendered here, not in the
+         plan, so it survives a page reload (the page reattaches
+         to the running or just-finished job on load and on
+         entering this tab). -->
+    <div id="link-job" style="display:none;margin-top:18px;max-width:840px">
+      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+        <b id="link-job-title"></b>
+        <span class="small dim" id="link-job-counts"></span>
+      </div>
+      <div class="progress" id="link-job-progress"><div id="link-job-bar"></div></div>
+      <div class="small dim mono" id="link-job-current" style="margin-top:6px;word-break:break-all"></div>
+      <div id="link-job-result" style="margin-top:8px"></div>
+    </div>
     <h2 style="margin-top:28px">Past organizes</h2>
     <p class="dim small" style="margin-top:0;max-width:840px">Undo records (manifests) are kept in the app's data folder and survive restarts. Undo restores the exact original layout and never overwrites a file that has since appeared at an original location.</p>
     <div id="org-manifests"></div>
@@ -993,6 +1010,7 @@ const api = {
   linkApply:         (plan_id) => jfetch("api/organize/links/apply", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({plan_id})}),
   linkUndo:          (manifest_id) => jfetch("api/organize/links/undo", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({manifest_id})}),
   linkManifests:     () => jfetch("api/organize/links/manifests"),
+  linkJob:           (id) => jfetch("api/organize/links/job" + (id ? "?id=" + encodeURIComponent(id) : "")),
   // v0.9.0 — gaps, coverage, and the subtitle wizard (W1–W3).
   gaps:        () => jfetch("api/gaps"),
   coverage:    () => jfetch("api/coverage"),
@@ -1058,6 +1076,9 @@ document.querySelectorAll("#tabs button").forEach(b => b.addEventListener("click
   // scan finishes mid-session must not show the stale copy).
   if (b.dataset.tab === "report") refreshReport();
   if (b.dataset.tab === "history") refreshHistory();
+  // v1.3.5: entering Organize reattaches to a running or
+  // just-finished link job (its progress bar / summary).
+  if (b.dataset.tab === "organize") checkLinkJob();
 }));
 
 /* === backnav: in-app history for the Android back button (portable) === */
@@ -2869,6 +2890,7 @@ function setOrgMode(m){
   $("btn-org-preview").textContent = link ? "Preview link plan" : "Preview plan";
   $("org-plan").style.display = link ? "none" : "block";
   $("link-plan").style.display = link ? "block" : "none";
+  if (link) checkLinkJob();
 }
 
 // linkRelSrc / linkRelTgt render a path relative to the link
@@ -2900,6 +2922,10 @@ async function previewLinkPlan(){
   }catch(e){
     linkPlanData = null;
     box.innerHTML = '<p style="color:var(--red)">' + esc(e.message) + "</p>";
+    // v1.3.5: a preview refused because a link job is
+    // running surfaces that job's progress, not just the
+    // refusal.
+    if (isBusyErr(e)) checkLinkJob();
   }
 }
 
@@ -2908,7 +2934,8 @@ async function previewLinkPlan(){
 // conflicts, Unlinkable, Couldn't identify, Skipped (empty
 // sections omitted), the scan-overlap warning, and the
 // Build / Undo row. resultHTML is the status shown under it
-// (also where the Apply report lands).
+// (v1.3.5: the Apply report itself lands in the link-job
+// block below, so it survives a reload).
 function renderLinkPlan(resultHTML){
   const box = $("link-plan");
   if (!linkPlanData){ box.innerHTML = ""; return; }
@@ -3051,61 +3078,222 @@ async function exportLinkProblems(){
   }
 }
 
-// applyLinkPlan executes the previewed link plan and renders
-// the report: created / already-linked / created-folders
-// counts, a partial notice, the manifest id, and every skipped
-// or failed item with its category and reason (collision
+/* ================= Link jobs (v1.3.5) =================
+   Link Apply and Undo run as server-side background jobs:
+   the POST answers at once with a job handle, the job block
+   under the plan shows the live progress bar (polled ~1s),
+   and completion renders the SAME final summary the old
+   synchronous calls returned — into the job block, so it
+   survives a page reload. checkLinkJob is the reattach
+   path: on page load and on entering the Organize tab it
+   picks up a running job's bar or a just-finished job's
+   summary. A reload mid-build must never again land on a
+   blind "operation in progress" refusal. */
+let linkJobTimer = null;
+let linkJobID = "";
+const linkJobRendered = new Set(); // job ids whose final summary this page session has rendered
+const LINK_JOB_PHASES = { checking: "Checking the plan against the disk", building: "Creating links", removing: "Removing links" };
+
+function linkJobPhaseLabel(job){
+  if (job.phase === "folders") return job.kind === "undo" ? "Removing folders" : "Creating folders";
+  return LINK_JOB_PHASES[job.phase] || "";
+}
+function isBusyErr(e){ return /in progress/.test((e && e.message) || ""); }
+
+// showLinkJob paints a running job: title, phase + counts
+// line, the bar (indeterminate until the phase has a total),
+// and the entry being processed right now.
+function showLinkJob(job){
+  $("link-job").style.display = "block";
+  $("link-job-result").innerHTML = "";
+  $("link-job-title").textContent = job.kind === "undo" ? "Undoing the link build…" : "Building the link library…";
+  const phase = linkJobPhaseLabel(job);
+  let counts = "";
+  if (job.total) counts = (phase ? phase + " — " : "") + (job.processed || 0) + " of " + job.total;
+  else if (phase) counts = phase + "…";
+  const bits = [];
+  if (job.kind === "undo"){
+    if (job.removed) bits.push(job.removed + " removed");
+    if (job.already_gone) bits.push(job.already_gone + " already gone");
+    if (job.skipped) bits.push(job.skipped + " left in place");
+  } else {
+    if (job.created) bits.push(job.created + " created");
+    if (job.already_linked) bits.push(job.already_linked + " already linked");
+    if (job.skipped) bits.push(job.skipped + " skipped");
+    if (job.failed) bits.push(job.failed + " failed");
+  }
+  if (bits.length) counts += (counts ? " · " : "") + bits.join(" · ");
+  $("link-job-counts").textContent = counts;
+  const pct = job.total ? Math.round(100 * (job.processed || 0) / job.total) : 0;
+  $("link-job-bar").style.width = (job.total ? pct : 100) + "%";
+  $("link-job-progress").classList.toggle("indet", !job.total);
+  $("link-job-current").textContent = job.current ? ("Now: " + job.current) : "";
+}
+
+// linkApplySummaryHTML renders a finished apply's report —
+// the exact summary the synchronous endpoint used to return:
+// created / already-linked / created-folders counts, a
+// partial notice, the manifest id, and every skipped or
+// failed item with its category and reason (collision
 // alternates are listed as not attempted).
+function linkApplySummaryHTML(res){
+  const skipped = res.skipped || [], failed = res.failed || [];
+  let msg = '<span style="color:var(--green)">Created ' + res.created + " link(s) ✓</span>" +
+    (res.already_linked ? " · " + res.already_linked + " already linked" : "") +
+    (res.created_dirs ? " · " + res.created_dirs + " folder(s) created" : "") +
+    (res.manifest_id ? '<br><span class="dim">Undo record: ' + esc(res.manifest_id) + "</span>" : "");
+  if (res.partial) msg += '<br><span style="color:var(--amber2)">Partial build — some links were not created (below). Preview again to build what is still missing.</span>';
+  (res.warnings||[]).forEach(w => { msg += '<br><span style="color:var(--amber2)">⚠ ' + esc(w.message) + "</span>"; });
+  const rows = skipped.concat(failed);
+  if (rows.length){
+    msg += '<div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>Source</th><th>Target</th><th>Outcome</th><th>Reason</th></tr></thead><tbody>' +
+      rows.map(o => "<tr><td class='mono dim'>" + esc(linkRelSrc(o.source || "")) + "</td><td class='mono dim'>" + esc(o.target ? linkRelTgt(o.target) : "") + "</td><td>" +
+        (o.category === "collision" ? '<span class="badge b-dim">collision — not attempted</span>' : '<span class="badge b-amber">' + esc(o.category) + "</span>") +
+        "</td><td class='small'>" + esc(o.reason) + "</td></tr>").join("") +
+      "</tbody></table></div>";
+  }
+  return msg;
+}
+
+// linkUndoSummaryHTML renders a finished undo's report (the
+// synchronous endpoint's summary, unchanged).
+function linkUndoSummaryHTML(res){
+  let msg = '<span style="color:var(--green)">Removed ' + res.removed + " link(s) ✓</span>" +
+    (res.already_gone ? " · " + res.already_gone + " already gone" : "") +
+    (res.dirs_removed ? " · " + res.dirs_removed + " folder(s) removed" : "");
+  if ((res.skipped||[]).length)
+    msg += '<br><span style="color:var(--red)">Left in place: ' + res.skipped.map(x => esc(linkRelTgt(x.target || "")) + " — " + esc(x.reason)).join("<br>") + "</span>";
+  if ((res.dirs_left||[]).length)
+    msg += '<br><span class="dim">Folders left: ' + res.dirs_left.map(x => esc(x.target) + " — " + esc(x.reason)).join("<br>") + "</span>";
+  if (!res.undone) msg += '<br><span style="color:var(--amber2)">The build stays active — undo can be retried once the skipped targets are resolved.</span>';
+  return msg;
+}
+
+// renderLinkJobFinal paints a terminal job in the job
+// block: the final summary (or the job-level error), an
+// Undo affordance for a finished build, and the refreshes
+// the old synchronous flow ran (plan re-render so its own
+// Undo button follows linkManifestID, manifests list).
+function renderLinkJobFinal(job){
+  stopLinkJobPolling();
+  linkJobRendered.add(job.id);
+  $("link-job").style.display = "block";
+  $("link-job-current").textContent = "";
+  $("link-job-counts").textContent = "";
+  $("link-job-progress").classList.remove("indet");
+  $("link-job-bar").style.width = "100%";
+  let html = "";
+  if (job.state === "failed"){
+    $("link-job-title").textContent = job.kind === "undo" ? "Undo failed" : "Link build failed";
+    html = '<span style="color:var(--red)">' + esc(job.error || "the job failed") + "</span>";
+    if (job.apply_result) html += "<br>" + linkApplySummaryHTML(job.apply_result);
+    if (job.undo_result) html += "<br>" + linkUndoSummaryHTML(job.undo_result);
+  } else if (job.kind === "undo"){
+    $("link-job-title").textContent = "Undo finished";
+    if (job.undo_result) html = linkUndoSummaryHTML(job.undo_result);
+    if (job.manifest_id && job.manifest_id === linkManifestID) linkManifestID = "";
+  } else {
+    $("link-job-title").textContent = "Link build finished";
+    if (job.apply_result){
+      html = linkApplySummaryHTML(job.apply_result);
+      if (job.apply_result.manifest_id) linkManifestID = job.apply_result.manifest_id;
+    }
+  }
+  if (job.state === "done" && job.kind === "apply" && job.apply_result && job.apply_result.manifest_id)
+    html += '<div style="margin-top:8px"><button class="danger" id="btn-link-job-undo">Undo this link build</button></div>';
+  $("link-job-result").innerHTML = html;
+  const undoBtn = $("btn-link-job-undo");
+  if (undoBtn) undoBtn.addEventListener("click", () => undoLinkBuild(job.apply_result.manifest_id));
+  if (linkPlanData) renderLinkPlan("");
+  refreshLinkManifests();
+}
+
+// showLinkJobGone: the poll lost the job — the app restarted
+// mid-build, or a newer job replaced the record. Say so
+// plainly; nothing about the build itself is lost.
+function showLinkJobGone(){
+  stopLinkJobPolling();
+  $("link-job").style.display = "block";
+  $("link-job-title").textContent = "Build progress unavailable";
+  $("link-job-counts").textContent = "";
+  $("link-job-current").textContent = "";
+  $("link-job-progress").classList.remove("indet");
+  $("link-job-result").innerHTML = '<span style="color:var(--amber2)">This build\'s progress is no longer available — the app restarted, or a newer build replaced it. What was created is recorded under Past link builds, and a fresh preview shows what already landed as Already linked.</span>';
+}
+
+function startLinkJobPolling(id){
+  if (!id) return;
+  if (linkJobTimer && linkJobID === id) return;
+  stopLinkJobPolling();
+  linkJobID = id;
+  linkJobTimer = setInterval(pollLinkJob, 1000);
+  pollLinkJob();
+}
+function stopLinkJobPolling(){
+  if (linkJobTimer){ clearInterval(linkJobTimer); linkJobTimer = null; }
+  linkJobID = "";
+}
+async function pollLinkJob(){
+  const id = linkJobID;
+  if (!id) return;
+  let job;
+  try{ job = await api.linkJob(id); }
+  catch(e){ showLinkJobGone(); return; }
+  if (!job || !job.id || job.state === "none"){ showLinkJobGone(); return; }
+  if (job.state === "running"){ showLinkJob(job); return; }
+  renderLinkJobFinal(job);
+}
+
+// checkLinkJob is the reattach path (v1.3.5): ask for the
+// latest link job and pick it up — a running job's bar (and
+// poller), or a just-finished job's summary, rendered once
+// per page session. Called on page load and whenever the
+// Organize tab is shown.
+async function checkLinkJob(){
+  let job; try{ job = await api.linkJob(); }catch(e){ return; }
+  if (!job || !job.id || job.state === "none") return;
+  if (job.state === "running"){ showLinkJob(job); startLinkJobPolling(job.id); }
+  else if (!linkJobRendered.has(job.id)) renderLinkJobFinal(job);
+}
+
+// applyLinkPlan starts the previewed plan as a background
+// job and watches it in the job block. The POST answers at
+// once with the job handle, so no build — however large —
+// can outlast a proxy timeout the way the synchronous call
+// did (the v1.3.3 incident: HTTP 504 on a ~9,000-link plan).
 async function applyLinkPlan(){
   if (!linkPlanData) return;
   const btn = $("btn-link-apply");
-  if (btn){ btn.disabled = true; btn.textContent = "Building…"; }
+  if (btn){ btn.disabled = true; btn.textContent = "Starting…"; }
   try{
-    const res = await api.linkApply(linkPlanData.id);
-    if (res.manifest_id) linkManifestID = res.manifest_id;
-    const skipped = res.skipped || [], failed = res.failed || [];
-    let msg = '<span style="color:var(--green)">Created ' + res.created + " link(s) ✓</span>" +
-      (res.already_linked ? " · " + res.already_linked + " already linked" : "") +
-      (res.created_dirs ? " · " + res.created_dirs + " folder(s) created" : "") +
-      (res.manifest_id ? '<br><span class="dim">Undo record: ' + esc(res.manifest_id) + "</span>" : "");
-    if (res.partial) msg += '<br><span style="color:var(--amber2)">Partial build — some links were not created (below). Preview again to build what is still missing.</span>';
-    (res.warnings||[]).forEach(w => { msg += '<br><span style="color:var(--amber2)">⚠ ' + esc(w.message) + "</span>"; });
-    const rows = skipped.concat(failed);
-    if (rows.length){
-      msg += '<div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>Source</th><th>Target</th><th>Outcome</th><th>Reason</th></tr></thead><tbody>' +
-        rows.map(o => "<tr><td class='mono dim'>" + esc(linkRelSrc(o.source || "")) + "</td><td class='mono dim'>" + esc(o.target ? linkRelTgt(o.target) : "") + "</td><td>" +
-          (o.category === "collision" ? '<span class="badge b-dim">collision — not attempted</span>' : '<span class="badge b-amber">' + esc(o.category) + "</span>") +
-          "</td><td class='small'>" + esc(o.reason) + "</td></tr>").join("") +
-        "</tbody></table></div>";
-    }
-    renderLinkPlan(msg);
-    refreshLinkManifests();
+    const job = await api.linkApply(linkPlanData.id);
+    showLinkJob(job);
+    startLinkJobPolling(job.id);
   }catch(e){
-    renderLinkPlan('<span style="color:var(--red)">' + esc(e.message) + "</span>");
+    if (isBusyErr(e)){
+      renderLinkPlan('<span class="dim">Another operation is already running — its progress is shown below.</span>');
+      checkLinkJob();
+    } else {
+      renderLinkPlan('<span style="color:var(--red)">' + esc(e.message) + "</span>");
+    }
   }
 }
 
-// undoLinkBuild reverses one link build (from this session's
-// Apply or from the Past link builds list) after a confirm that
-// carries the mode's undo promise.
+// undoLinkBuild starts an undo job for one link build (from
+// a finished build's summary, the plan's Undo button, or the
+// Past link builds list) after a confirm that carries the
+// mode's undo promise, and watches it in the job block.
 async function undoLinkBuild(mid){
   if (!mid) return;
   if (!confirm("Undo this link build? Only links recorded by this build and still pointing to the recorded source file will be removed. Originals are not touched.")) return;
   try{
-    const res = await api.linkUndo(mid);
-    let msg = '<span style="color:var(--green)">Removed ' + res.removed + " link(s) ✓</span>" +
-      (res.already_gone ? " · " + res.already_gone + " already gone" : "") +
-      (res.dirs_removed ? " · " + res.dirs_removed + " folder(s) removed" : "");
-    if ((res.skipped||[]).length)
-      msg += '<br><span style="color:var(--red)">Left in place: ' + res.skipped.map(x => esc(linkRelTgt(x.target || "")) + " — " + esc(x.reason)).join("<br>") + "</span>";
-    if ((res.dirs_left||[]).length)
-      msg += '<br><span class="dim">Folders left: ' + res.dirs_left.map(x => esc(x.target) + " — " + esc(x.reason)).join("<br>") + "</span>";
-    if (!res.undone) msg += '<br><span style="color:var(--amber2)">The build stays active — undo can be retried once the skipped targets are resolved.</span>';
-    if (mid === linkManifestID) linkManifestID = "";
-    if (linkPlanData) renderLinkPlan(msg);
-    else $("link-plan").innerHTML = '<p class="small">' + msg + "</p>";
-    refreshLinkManifests();
-  }catch(e){ alert(e.message); }
+    const job = await api.linkUndo(mid);
+    showLinkJob(job);
+    startLinkJobPolling(job.id);
+  }catch(e){
+    if (isBusyErr(e)) checkLinkJob();
+    else alert(e.message);
+  }
 }
 
 // refreshLinkManifests paints the Past link builds list.
@@ -3427,6 +3615,7 @@ async function refreshAll(){
 }
 refreshAll();
 startPolling();
+checkLinkJob();
 </script>
 </body>
 </html>

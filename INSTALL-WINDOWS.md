@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.3.4)
+# Install — Windows (WellKeptLib v1.3.5)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.3.4-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.3.5-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,24 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.3.5
+
+- **Link builds and undos run in the background, with a
+  progress bar.** Pressing **Build links** (or **Undo**)
+  starts the work on the app side and shows its progress —
+  the step it is on, how far through it is, the counts so
+  far, and the file it is working on — ending with the
+  usual summary. A big build no longer has to finish
+  inside one page request, so the gateway timeout error
+  (HTTP 504) that a build of thousands of links could hit
+  is gone.
+- **You can leave and come back.** Close or reload the
+  page while a build runs and the build keeps going;
+  when you return, the Organize tab shows its progress,
+  or its finished summary if it completed while you were
+  away. What gets built or undone is exactly what it was
+  before — only how the work is run and watched changed.
 
 ## What's new in v1.3.4
 

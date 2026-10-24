@@ -3,6 +3,12 @@ package core
 // linkapply.go — link-mode execution: LinkPlan / LinkApply /
 // LinkUndo (v1.1.0, LINK-LIBRARY-SPEC §§11–13).
 //
+// v1.3.5: the engines live in linkApplyLocked / linkUndoLocked
+// (guard held by the caller, progress tap optional) so the
+// HTTP endpoints can run them as background jobs — see
+// linkjobs.go. The synchronous LinkApply / LinkUndo methods
+// remain as thin wrappers and are unchanged in behavior.
+//
 // PRIME INVARIANT: link Apply and link Undo never touch an
 // original. Apply creates directories and hardlinks ONLY, in
 // the target tree; Undo removes only target names whose current
@@ -178,11 +184,27 @@ func (s *Service) linkRankResolver(items []*Item, cfg *Config) linkRankResolver 
 
 // LinkApply executes a previously previewed link plan. See the
 // file header for the contract; per-item outcomes are in-band.
+//
+// v1.3.5: LinkApply remains the synchronous form (the test
+// suite and any in-process caller); the HTTP endpoint starts
+// the SAME engine as a background job via StartLinkApplyJob
+// (linkjobs.go). linkApplyLocked is the one engine both call,
+// so a job build is exactly the build the synchronous call
+// would do — same revalidation, same manifest, same outcomes.
 func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 	if err := s.beginFileOp(); err != nil {
 		return nil, err
 	}
 	defer s.endFileOp()
+	return s.linkApplyLocked(planID, nil)
+}
+
+// linkApplyLocked is LinkApply with the file-operation guard
+// already held by the caller. prog (nil for the synchronous
+// form) receives a progress snapshot at each phase step: the
+// entry in flight, how much of the phase is done, and the
+// outcome counts so far, read from the result being built.
+func (s *Service) linkApplyLocked(planID string, prog linkProgressFunc) (*LinkApplyResult, error) {
 	s.mu.Lock()
 	plan, ok := s.linkPlans[planID]
 	if ok {
@@ -201,6 +223,22 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 		res.Warnings = []LinkPlanWarning{}
 	}
 	partial := false
+	// report is the job-progress tap (v1.3.5): at each phase
+	// step it snapshots the entry in flight, the phase's
+	// progress, and the outcome counts so far — all read from
+	// res, so a poller can never see counts the final result
+	// would not agree with.
+	report := func(phase, current string, processed, total int) {
+		if prog == nil {
+			return
+		}
+		prog(linkProgSnap{
+			Phase: phase, Current: current, Processed: processed, Total: total,
+			Created: res.Created, AlreadyLinked: res.AlreadyLinked,
+			Skipped: len(res.Skipped), Failed: len(res.Failed),
+		})
+	}
+	report("checking", "", 0, len(plan.LinksToCreate))
 
 	// Root-level revalidation (SPEC §11.1): an in-band result
 	// with zero created links and NO manifest.
@@ -210,6 +248,7 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 		}
 		partial = len(res.Failed) > 0
 		appendLinkCollisionOutcomes(plan, res)
+		report("checking", "", len(plan.LinksToCreate), len(plan.LinksToCreate))
 		res.Partial = partial
 		return res, nil
 	}
@@ -221,7 +260,8 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 		satisfied[e.Source] = true
 	}
 	var work []LinkEntry
-	for _, e := range plan.LinksToCreate {
+	for i, e := range plan.LinksToCreate {
+		report("checking", e.Source, i, len(plan.LinksToCreate))
 		out := revalidateLinkEntry(plan, e)
 		if out == nil {
 			work = append(work, e)
@@ -240,6 +280,7 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 		}
 	}
 	appendLinkCollisionOutcomes(plan, res)
+	report("checking", "", len(plan.LinksToCreate), len(plan.LinksToCreate))
 	if len(work) == 0 {
 		res.Partial = partial
 		return res, nil
@@ -292,6 +333,7 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 	blockedDirs := map[string]bool{}
 	manifestBroken := false
 	for i := range m.CreatedDirs {
+		report("folders", m.CreatedDirs[i].Path, i, len(m.CreatedDirs))
 		rec := &m.CreatedDirs[i]
 		if manifestBroken || blockedDirs[filepath.Dir(rec.Path)] && rec.Path != plan.TargetRoot {
 			blockedDirs[rec.Path] = true
@@ -324,6 +366,7 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 			manifestBroken = true
 		}
 	}
+	report("folders", "", len(m.CreatedDirs), len(m.CreatedDirs))
 	entryDirBlocked := func(e LinkEntry) bool {
 		for d := filepath.Dir(e.Target); ; d = filepath.Dir(d) {
 			if blockedDirs[d] {
@@ -355,7 +398,8 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 		return ordered[i].Target < ordered[j].Target
 	})
 	stopped := manifestBroken
-	for _, e := range ordered {
+	for j, e := range ordered {
+		report("building", e.Source, j, len(ordered))
 		out := LinkOutcome{Source: e.Source, Target: e.Target}
 		if stopped {
 			out.Category, out.Reason = "manifest", "creation stopped after the undo manifest could not be updated — preview again to build the rest"
@@ -431,6 +475,7 @@ func (s *Service) LinkApply(planID string) (*LinkApplyResult, error) {
 			partial = true
 		}
 	}
+	report("building", "", len(ordered), len(ordered))
 	for _, rec := range m.CreatedDirs {
 		if rec.Created {
 			res.CreatedDirs++
@@ -532,6 +577,14 @@ func (s *Service) LinkUndo(manifestID string) (*LinkUndoResult, error) {
 		return nil, err
 	}
 	defer s.endFileOp()
+	return s.linkUndoLocked(manifestID, nil)
+}
+
+// linkUndoLocked is LinkUndo with the file-operation guard
+// already held by the caller (v1.3.5 — the one engine both
+// the synchronous method and the background job run). prog is
+// the job-progress tap, nil for the synchronous form.
+func (s *Service) linkUndoLocked(manifestID string, prog linkProgressFunc) (*LinkUndoResult, error) {
 	m, err := s.loadLinkManifest(manifestID)
 	if err != nil {
 		return nil, err
@@ -540,16 +593,38 @@ func (s *Service) LinkUndo(manifestID string) (*LinkUndoResult, error) {
 		return nil, fmt.Errorf("link build %s was already undone at %s", m.ID, m.UndoneAt)
 	}
 	res := &LinkUndoResult{Skipped: []LinkOutcome{}, DirsLeft: []LinkOutcome{}}
+	// report is the job-progress tap (v1.3.5), snapshotting
+	// from res exactly like the Apply engine's.
+	report := func(phase, current string, processed, total int) {
+		if prog == nil {
+			return
+		}
+		prog(linkProgSnap{
+			Phase: phase, Current: current, Processed: processed, Total: total,
+			Removed: res.Removed, AlreadyGone: res.AlreadyGone,
+			Skipped: len(res.Skipped),
+		})
+	}
+	pending := 0
+	for i := range m.Links {
+		if !m.Links[i].Undone {
+			pending++
+		}
+	}
+	report("removing", "", 0, pending)
 	unresolved := false
 	skip := func(e *linkManifestEntry, reason string) {
 		res.Skipped = append(res.Skipped, LinkOutcome{Source: e.Source, Target: e.Target, Category: "skipped", Reason: reason})
 		unresolved = true
 	}
+	handled := 0
 	for i := len(m.Links) - 1; i >= 0; i-- {
 		e := &m.Links[i]
 		if e.Undone {
 			continue
 		}
+		report("removing", e.Target, handled, pending)
+		handled++
 		// The manifest is data, not authority (v0.4.1
 		// confinement, applied to links): recorded paths must
 		// sit inside the manifest's own roots, the roots must
@@ -591,6 +666,7 @@ func (s *Service) LinkUndo(manifestID string) (*LinkUndoResult, error) {
 		res.Removed++
 		_ = s.writeLinkManifest(m)
 	}
+	report("removing", "", pending, pending)
 	// Created directories, deepest first, only when empty
 	// (os.Remove enforces the empty part). A directory left
 	// behind never blocks marking the build undone (§12.3).
@@ -601,10 +677,19 @@ func (s *Service) LinkUndo(manifestID string) (*LinkUndoResult, error) {
 		}
 		return dirs[i].Path > dirs[j].Path
 	})
+	dirTotal := 0
+	for _, rec := range dirs {
+		if rec.Created {
+			dirTotal++
+		}
+	}
+	handledDirs := 0
 	for _, rec := range dirs {
 		if !rec.Created {
 			continue
 		}
+		report("folders", rec.Path, handledDirs, dirTotal)
+		handledDirs++
 		out := LinkOutcome{Target: rec.Path, Category: "directory"}
 		if rec.Path != m.TargetRoot && !pathWithinRoot(m.TargetRoot, rec.Path) {
 			out.Reason = "the recorded folder is outside the target folder — left in place"
@@ -639,6 +724,9 @@ func (s *Service) LinkUndo(manifestID string) (*LinkUndoResult, error) {
 			continue
 		}
 		res.DirsRemoved++
+	}
+	if dirTotal > 0 {
+		report("folders", "", dirTotal, dirTotal)
 	}
 	if !unresolved {
 		m.UndoneAt = time.Now().UTC().Format(time.RFC3339)

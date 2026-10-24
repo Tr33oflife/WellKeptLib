@@ -97,6 +97,12 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	mux.HandleFunc("POST /api/organize/links/plan", s.handleLinkPlan)
 	mux.HandleFunc("POST /api/organize/links/apply", s.handleLinkApply)
 	mux.HandleFunc("POST /api/organize/links/undo", s.handleLinkUndo)
+	// v1.3.5 — link Apply/Undo run as background jobs (a big
+	// build outlasted the proxy timeout as one synchronous
+	// request): the POSTs above answer 202 + a job handle, and
+	// this status endpoint carries progress + the final
+	// summary.
+	mux.HandleFunc("GET /api/organize/links/job", s.handleLinkJob)
 	mux.HandleFunc("GET /api/organize/links/manifests", s.handleLinkManifests)
 	// v1.3.0 — the link plan's problems as ONE downloadable
 	// JSON document (every conflict, not-identified and
@@ -630,10 +636,15 @@ func (s *server) handleLinkPlan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, plan)
 }
 
-// handleLinkApply -> Service.LinkApply (v1.1.0).
-// Body: {plan_id}. Per-item skips and failures come back in-band
-// in the result; only hard errors (unknown plan, scan running,
-// another file operation) are HTTP errors.
+// handleLinkApply -> Service.StartLinkApplyJob (v1.1.0;
+// v1.3.5: a background job). Body: {plan_id}. The apply runs
+// server-side and the answer is 202 + the job handle — poll
+// GET /api/organize/links/job for progress and the final
+// summary (the LinkApplyResult the synchronous endpoint used
+// to return, attached to the terminal job status). Per-item
+// skips and failures stay in-band in that result; hard start
+// errors (unknown plan, scan running, another file operation)
+// stay HTTP errors with the synchronous endpoint's statuses.
 func (s *server) handleLinkApply(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		PlanID string `json:"plan_id"`
@@ -642,16 +653,18 @@ func (s *server) handleLinkApply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	res, err := s.svc.LinkApply(body.PlanID)
+	job, err := s.svc.StartLinkApplyJob(body.PlanID)
 	if err != nil {
 		writeErr(w, http.StatusConflict, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusAccepted, job)
 }
 
-// handleLinkUndo -> Service.LinkUndo (v1.1.0).
-// Body: {manifest_id}. Per-entry skips come back in-band.
+// handleLinkUndo -> Service.StartLinkUndoJob (v1.1.0;
+// v1.3.5: a background job, same shape as apply).
+// Body: {manifest_id}. Per-entry skips come back in-band in
+// the finished job's undo_result.
 func (s *server) handleLinkUndo(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		ManifestID string `json:"manifest_id"`
@@ -660,12 +673,29 @@ func (s *server) handleLinkUndo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	res, err := s.svc.LinkUndo(body.ManifestID)
+	job, err := s.svc.StartLinkUndoJob(body.ManifestID)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusAccepted, job)
+}
+
+// handleLinkJob -> Service.LinkJob (v1.3.5): the latest link
+// job's status — live progress while running, the final
+// summary when done or the job-level error when failed.
+// ?id= pins one job; an id that matches no recorded job is
+// a 404. After a server restart there is no record at all
+// and the answer is state "none" — the build's manifest is
+// the durable record, and a fresh preview shows what
+// actually landed as already-linked.
+func (s *server) handleLinkJob(w http.ResponseWriter, r *http.Request) {
+	st, err := s.svc.LinkJob(r.URL.Query().Get("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // handleLinkProblems -> Service.LinkPlanDiagnostics (v1.3.0):

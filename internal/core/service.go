@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.3.4"
+const Version = "1.3.5"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -122,6 +122,14 @@ type Service struct {
 	// to a link endpoint or the reverse. In-memory only, like
 	// move plans; link manifests live on disk.
 	linkPlans map[string]*LinkPlan
+	// linkJob (v1.3.5, linkjobs.go): the latest link Apply/Undo
+	// background job — running, or finished and kept so a page
+	// that reloads can still render its summary (reattach).
+	// In-memory only, like scan state: a restart forgets it,
+	// and the build's own manifest is the durable record.
+	// Guarded by mu.
+	linkJob    *LinkJobStatus
+	linkJobSeq int
 	// signins holds in-flight plex.tv sign-in sessions (v0.3.1, see
 	// plex_auth.go), keyed by an opaque session ID. Memory only by
 	// design: a session carries the user's ACCOUNT token between
