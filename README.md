@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.3.6
+- **Version:** 1.4.0
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -20,7 +20,8 @@ double-click `.exe` on Windows.
 ## Screenshots
 
 Taken from a running 1.2.0 instance (the UI is
-unchanged in 1.3.6 — a parser fix; 1.3.5 added a
+unchanged in 1.3.6 — a parser fix; 1.4.0 adds the
+Link-library switches and plan badges; 1.3.5 added a
 progress bar for link builds; 1.3.4 changed only
 the link plan's presentation — 0-BYTE flags, a grouped
 Skipped summary, collapsible sections; 1.3.3 added extra
@@ -189,6 +190,26 @@ create, collisions, and skips, before anything is written:**
   source and destination on the **same filesystem**, and
   deleting an original doesn't free space while a link to it
   remains — both stated in the UI.
+- **Link mode reaches further (new in 1.4.0).** Three
+  additions, each behind a Settings → Link library switch
+  (all on by default; turning one off restores exactly the
+  behavior it replaced). **Extras link too:** trailers,
+  featurettes, deleted scenes and commentaries hardlink
+  into their work's `extras/` subfolder (Jellyfin's
+  documented catch-all) instead of being left behind —
+  link mode only, extras still never move, and samples
+  never link. An extra links only when exactly one work
+  owns it; a folder chain mixing two works refuses rather
+  than guessing. **Specials get created Season 00
+  numbers:** a special with no episode number (holiday
+  special, OVA, making-of) is assigned the next S00
+  number for its series — created, never found in the
+  name, and always badged "S00 · assigned" in the plan
+  and the export. **Movies no longer require a year:** a
+  year-less movie links as `Title/Title` when it sits in
+  its own folder or a Movies-collection folder — badged
+  "no year"; files inside a series tree are never
+  treated this way.
 
 Scanning is always read-only. The only features that touch
 files are Organize (preview → apply → undo; the link mode
@@ -206,7 +227,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.3.6-public.zip` from the
+Get `WellKeptLib-1.4.0-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -308,7 +329,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.3.6 binaries. Four disclosed divergences — in test
+  1.4.0 binaries. Three disclosed divergences — in test
   files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
@@ -317,11 +338,8 @@ to the internet.
   not shipped here) and runs in full where the verification
   copies exist — the two fractional-misfire victims it
   covers are also pinned verbatim in `parser_131_test.go`
-  (and the twelve v1.3.6 extras flips in
-  `parser_extras_136_test.go`, whose library-root path is
-  generalized to a neutral placeholder in this public
-  copy — the root is only used to derive relative folder
-  parts, so every asserted parse is identical);
+  (and the v1.3.6 extras flips and v1.4.0 marker flips in
+  their own test files);
   and the Ko-fi username default is **carried as-is**
   in this public edition by explicit owner decision
   (2026-10-23), as a scoped exception to the scrub rule
@@ -333,7 +351,10 @@ to the internet.
   and the back-navigation toast while the floating button
   is drawn — originated in this public edition's 1.3.3
   and was adopted into the development tree in 1.3.4, so
-  it is no longer a divergence.) No other product code
+  it is no longer a divergence. Likewise, the v1.3.6
+  extras test's generalized library root was adopted
+  into the development tree in 1.4.0, closing that
+  divergence too.) No other product code
   or test assertion differs from
   the development tree, and every other scrub item still
   applies in full. The public
@@ -386,44 +407,48 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.3.6)
+## Verification (what was actually checked for 1.4.0)
 
-- Go test suite: **295 top-level tests, all passing**,
+- Go test suite: **304 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (295 PASS, 0 FAIL);
+  re-run on this published tree (304 PASS, 0 FAIL);
   `go vet` and `gofmt` clean; the race detector is clean
-  over the whole suite. One pre-existing test gained a
-  named expectation set (the bulk regression's twelve
-  v1.3.6 extras flips — that change IS this release);
-  no other expectation changed (292 carried + 3 new
-  extras tests).
-- **Corpus gate:** the bulk regression re-parses all
-  843 basenames from the first real link-problems
-  export (with their real folder context) — exactly the
-  12 named extras flips, the 2 v1.3.1 victims as
-  before, **0 unexplained deltas**; all 282 other
-  entries the export recorded as extras still classify
-  as extras. In this published tree the test runs in
-  full (the corpus lives with the project's
-  verification copies); in a standalone clone it skips
-  — see the transparency note.
-- Page checks: 170 ids looked up / 201 defined, all
-  resolve (the UI is unchanged in 1.3.6); the Node
-  render harness passes **172/172** online (stub CDN
-  seam), with offline / blank / disabled scenarios
-  green as well.
-- Shipped-binary smoke: **97/97** — the full carried
+  over the whole suite (295 carried + 9 new; the bulk
+  regression's new flip set is additive and is part of
+  this release's gate — no other expectation changed).
+- **Corpus gate:** all 843 basenames from the first real
+  link-problems export, gated at parse level AND at
+  planner-predicate level — exactly **26 permitted
+  deltas** (16 `[Extra]`-marker flips, 8 specials
+  gaining S00 numbers, 2 year-less Macross movies),
+  **0 unexplained**; the v1.3.1 victims and v1.3.6
+  flips behave as before. In this published tree the
+  test runs in full; in a standalone clone it skips —
+  see the transparency note.
+- Page checks: 173 ids looked up / 204 defined, all
+  resolve; the Node render harness passes **181/181**
+  online (stub CDN seam), with offline / blank /
+  disabled scenarios green as well — covering the
+  extras plan group, both new badges, and the three
+  switches (default ON, state riding the config POST).
+- Shipped-binary smoke: **111/111** — the full carried
   battery (baseline 11/2/2/6, incident replay, link
-  mode and the background-job flow, themes, icons,
-  report/exports, CLI codes, the 1.3.0 export, the
-  1.3.1–1.3.4 checks). The public package's extracted
-  binary passes the same smoke, and the installer walk
-  passes **12/12** (with the honest limit that
-  `systemctl` is shimmed in the sandbox walks).
+  mode and the job flow, themes, icons, report/exports,
+  CLI codes, the 1.3.0–1.3.4 checks) plus 14 new 1.4.0
+  checks: the switches over the API, an
+  extras/specials/year-less plan over HTTP with flags
+  asserted, the export's flagged sections, an apply job
+  creating all six links with hardlink identity
+  verified, a fully incremental second plan, and the
+  undo job restoring the tree. The public package's
+  extracted binary passes the same smoke, and the
+  installer walk passes **12/12** (with the honest
+  limit that `systemctl` is shimmed in the sandbox
+  walks).
 - Standalone clone proof: a clean copy of this tree,
   with fixtures generated by the shipped
   `fixtures/generate.sh`, passes `go test ./...` —
-  **294 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
+  **303 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
   which needs the unshipped real-export corpus; see the
   transparency note).
 - **Default-theme equality, measured:** a headless-Chrome
@@ -481,6 +506,18 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   live proof is a plan preview on a real tree: 0-BYTE
   flags on a zero-reporting pack, the grouped summary on
   a plan with thousands of skips, the folded sections.
+- **The 1.4.0 link additions are corpus-proven, not
+  live-proven.** The gates ran the real export's 843
+  names at parse and planner level plus fixture trees
+  and HTTP round trips. The live proof is the
+  maintainer's next preview: ~249 extras linking (of
+  294 — minus 45 samples and any owner-ambiguous), the
+  8 specials badged "S00 · assigned", the 2 Macross
+  movies badged "no year". The extras owner rule has a
+  stated coverage limit (a folder chain mixing two
+  works stays not-identified); a rerun of the problems
+  export measures exactly how much it affects a real
+  tree, since linked extras now drop out of not_found.
 - **The 1.3.6 extras fix is corpus-proven, not
   live-proven.** The gate above ran the real export's
   843 names with their real folder context; the live
@@ -552,6 +589,60 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.4.0
+
+The unidentified-reduction release: three additions to
+the link planner, each behind a Settings → Link library
+switch (all default ON; each OFF restores the pre-1.4.0
+outcome for its files exactly, regression-pinned).
+
+- **Extras link into the library (link mode only).**
+  The design law is amended, not deleted: extras still
+  never MOVE, but trailers, featurettes, deleted scenes
+  and commentaries now hardlink into
+  `<Series Folder>/extras/` or `<Movie Folder>/extras/`
+  — Jellyfin's documented catch-all subfolder — under
+  their cleaned titles, as first-class manifest entries
+  through the job engine (pre-1.4.0 manifests undo
+  unchanged). **Samples never link** — the gate reuses
+  the parser's own sample signals (a `sample`/`samples`
+  folder, or the sample stem patterns); on the
+  maintainer's real export, 45 of 294 extras are samples
+  and 249 genuine. An extra links only when **exactly
+  one work owns it** (the deepest folder whose subtree
+  holds target-built videos); a chain mixing two works
+  refuses and stays not-identified. A leading
+  `[Extra]`/`[Extras]` filename marker now also
+  classifies an extra. Two extras cleaning to the same
+  target name are a collision with no keeper — never an
+  overwrite.
+- **Specials gain created Season 00 numbers.** A TV
+  file with an identified series but no episode number
+  that signals special-ness (S00 marker, "Special", a
+  Specials/OVA folder, a making-of) is assigned the
+  next S00 number for its series, in sorted source-path
+  order — a plan-wide pass, so the parser, move mode
+  and the duplicate grouper never see an invented
+  number. Entries are flagged `number_assigned` and
+  badged **"S00 · assigned"**; the export carries the
+  honesty note: numbering is per-plan over the set
+  present, so a changed set can shift numbers — and a
+  shifted target already occupied surfaces as a
+  conflict, never an overwrite.
+- **Year-less movies, context-guarded.** A movie with
+  a clean title but no year links as `Title/Title.ext`
+  only when its parent folder's cleaned title EQUALS
+  the movie's, or an ancestor folder names a Movies
+  context with a matching title — flagged `no_year`,
+  badged **"no year"**. (An earlier prefix form of the
+  parent rule admitted 3 junk files in the corpus
+  sweep — two OP/ED clips and a series-pack OVA — so
+  the shipped rule is equality-only; files inside a
+  series tree fail both tests by construction.)
+- Corpus gate for the whole release: exactly 26
+  permitted deltas across the 843 real basenames,
+  0 unexplained.
 
 ## Release notes — 1.3.6
 

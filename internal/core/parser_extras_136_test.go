@@ -23,12 +23,6 @@ import (
 	"testing"
 )
 
-// PUBLIC-TREE NOTE: the private copy of this test roots the
-// paths at the maintainer's real library root, which carries
-// his seedbox username. The public copy generalizes that one
-// segment to a neutral placeholder; the root is only used to
-// derive relative dir parts, so every asserted parse is
-// identical.
 const extras136Root = "/home/user/downloads/rtorrent/TV"
 
 // extras136DirParts derives dirParts from a path exactly the

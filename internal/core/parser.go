@@ -355,11 +355,34 @@ func classifyExtra(stem string, dirParts []string) (title string, isExtra bool) 
 	titleStem := stem
 	low := strings.ToLower(stem)
 	matched := false
-	for _, suf := range extraSuffixes {
-		if strings.HasSuffix(low, suf) {
-			titleStem = stem[:len(stem)-len(suf)]
-			matched = true
-			break
+	// v1.4.0: a LEADING bracket marker whose whole content is
+	// "extra" or "extras" ("[Extra] Animatic …") classifies
+	// the file as an extra, with the bracket stripped from the
+	// display title. Only a bracket at the very start of the
+	// stem counts, and only the exact word: release-group
+	// brackets ("[Anime Time] …") and quality brackets carry
+	// other content and never fire. This route exists for
+	// packs that label bonus files this way — their folder
+	// ("DVD Extras:Special Features") tokenizes with the colon
+	// attached ("extras:special"), so the folder rules below
+	// cannot see it, and the files otherwise fall through to
+	// the movie path and die on "no year found".
+	if trimmed := strings.TrimSpace(stem); strings.HasPrefix(trimmed, "[") {
+		if close := strings.Index(trimmed, "]"); close > 0 {
+			inner := strings.ToLower(strings.TrimSpace(trimmed[1:close]))
+			if inner == "extra" || inner == "extras" {
+				matched = true
+				titleStem = trimmed[close+1:]
+			}
+		}
+	}
+	if !matched {
+		for _, suf := range extraSuffixes {
+			if strings.HasSuffix(low, suf) {
+				titleStem = stem[:len(stem)-len(suf)]
+				matched = true
+				break
+			}
 		}
 	}
 	if !matched {

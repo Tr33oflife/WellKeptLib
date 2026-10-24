@@ -19,6 +19,7 @@ package core
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -44,7 +45,24 @@ type LinkDiagnostics struct {
 	Conflicts       []LinkProblemConflict   `json:"conflicts"`
 	NotFound        []LinkProblemNotFound   `json:"not_found"`
 	Unlinkable      []LinkProblemUnlinkable `json:"unlinkable"`
-	Notes           []string                `json:"notes"`
+	// NumberAssigned / YearlessMovies (v1.4.0, additive):
+	// the plan entries whose Season 00 number was CREATED
+	// by the planner, and the movies accepted with no year.
+	// These are healthy links (otherwise counts-only in this
+	// document), listed here because the honesty rule for
+	// invented facts applies to the export too: an invented
+	// number or a year-less acceptance is never silent.
+	NumberAssigned []LinkFlaggedEntry `json:"number_assigned,omitempty"`
+	YearlessMovies []LinkFlaggedEntry `json:"yearless_movies,omitempty"`
+	Notes          []string           `json:"notes"`
+}
+
+// LinkFlaggedEntry is one healthy plan entry carrying a
+// v1.4.0 honesty flag (a created number, a year-less
+// acceptance): the source and the target it links to.
+type LinkFlaggedEntry struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 // LinkProblemConflict is one entry of the conflicts list. The
@@ -235,6 +253,27 @@ func BuildLinkPlanDiagnostics(plan *LinkPlan, appVersion string, now time.Time) 
 			lu.DestinationDev = u64ptr(u.DestinationDev)
 		}
 		doc.Unlinkable = append(doc.Unlinkable, lu)
+	}
+	// v1.4.0: the flagged healthy entries (created numbers,
+	// year-less movies), from both link lists — the plan's
+	// lists are source-sorted, so the sections are too.
+	for _, list := range [][]LinkEntry{plan.LinksToCreate, plan.AlreadyLinked} {
+		for _, e := range list {
+			if e.NumberAssigned {
+				doc.NumberAssigned = append(doc.NumberAssigned, LinkFlaggedEntry{Source: e.Source, Target: e.Target})
+			}
+			if e.NoYear {
+				doc.YearlessMovies = append(doc.YearlessMovies, LinkFlaggedEntry{Source: e.Source, Target: e.Target})
+			}
+		}
+	}
+	sort.Slice(doc.NumberAssigned, func(i, j int) bool { return doc.NumberAssigned[i].Source < doc.NumberAssigned[j].Source })
+	sort.Slice(doc.YearlessMovies, func(i, j int) bool { return doc.YearlessMovies[i].Source < doc.YearlessMovies[j].Source })
+	if len(doc.NumberAssigned) > 0 {
+		doc.Notes = append(doc.Notes, "number_assigned lists the entries whose Season 00 episode number was CREATED by the app (the file named no episode number): numbers are assigned per plan, in sorted source-path order across the plan's specials of that series — if a future plan's set of specials differs, the numbers can shift, and a shifted target already occupied by a different file surfaces as a target conflict rather than being overwritten.")
+	}
+	if len(doc.YearlessMovies) > 0 {
+		doc.Notes = append(doc.Notes, "yearless_movies lists the movies accepted with no year in the name, on their folder context (their own movie folder, or a folder naming a Movies context): they link as Title/Title.ext with no (Year) in the folder name.")
 	}
 	return doc
 }

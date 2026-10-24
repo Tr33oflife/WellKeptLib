@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.3.6)
+# Install — Windows (WellKeptLib v1.4.0)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.3.6-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.4.0-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,32 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.4.0
+
+- **Extras join the link library.** Trailers, featurettes,
+  deleted scenes, commentaries and other extras now get a
+  hardlink in their show's or movie's `extras` folder when
+  you build the link library, instead of being left behind
+  as "extra content". Extras still never *move* — this is
+  the link library only — and sample files still never link.
+- **Specials get a Season 00 number.** A TV special that
+  names no episode number — a holiday special, an OVA, a
+  making-of — is given the next Season 00 number for its
+  series, so it links like any other episode. The number is
+  created by the app, not found in the name, and the plan
+  badges those entries "S00 · assigned" so it is never
+  silent. If a later plan's set of specials changes, the
+  numbers can shift; the plan always shows the assignment.
+- **Movies no longer need a year in the name.** A movie
+  with no year in its file name still links — as
+  `Title/Title` with no "(Year)" — when it sits in its own
+  movie folder or in a folder that names a Movies
+  collection, badged "no year" in the plan. Files inside a
+  series tree are never treated this way.
+- **All three can be switched off** under Settings →
+  Link library, and turning one off restores exactly the
+  behavior it replaced.
 
 ## What's new in v1.3.6
 

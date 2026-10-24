@@ -48,8 +48,19 @@ type linkRankResolver func(source string, parsed ParsedName, size int64, modTime
 type LinkEntry struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
-	Kind   string `json:"kind"` // movie | episode | sidecar | artwork
+	Kind   string `json:"kind"` // movie | episode | sidecar | artwork | extra
 	Title  string `json:"title"`
+	// NumberAssigned (v1.4.0): this episode's Season 00
+	// number was CREATED by the planner (the file named no
+	// episode number) — flagged here, badged in the UI and
+	// listed in the diagnostics export, so an invented
+	// number is never silent. Only ever true for episodes.
+	NumberAssigned bool `json:"number_assigned,omitempty"`
+	// NoYear (v1.4.0): this movie linked without a year in
+	// its name (Title/Title.ext, no "(Year)"), accepted on
+	// its folder context. Flagged and badged like
+	// NumberAssigned. Only ever true for movies.
+	NoYear bool `json:"no_year,omitempty"`
 	// OwnerSource is the video a sidecar belongs to (empty for
 	// videos and folder artwork).
 	OwnerSource string `json:"owner_source,omitempty"`
@@ -227,12 +238,13 @@ type LinkPlanStats struct {
 	ConflictTargets int `json:"target_conflict_targets"`
 	ConflictFiles   int `json:"target_conflict_files"`
 	Skipped         int `json:"skipped"`
-	// Movies / Episodes / Sidecars / Artwork count the files
-	// within links-to-create only.
+	// Movies / Episodes / Sidecars / Artwork / Extras count
+	// the files within links-to-create only.
 	Movies   int `json:"movies"`
 	Episodes int `json:"episodes"`
 	Sidecars int `json:"sidecars"`
 	Artwork  int `json:"artwork"`
+	Extras   int `json:"extras"`
 }
 
 // LinkPlan is the full dry-run output for one source root into
@@ -416,14 +428,34 @@ type pendingAttach struct {
 
 // linkCandidate is one non-video file (sidecar / artwork) whose
 // owner video was selected, awaiting its own target
-// classification.
+// classification. v1.4.0: extras ride the same shape (kind
+// "extra") — an extra's owner is a WORK (its folder), not one
+// video, so it carries no dependency: it links on the work's
+// identification, whether or not any one copy of the work did.
 type linkCandidate struct {
 	file        orgFile
 	target      string
-	kind        string // sidecar | artwork
+	kind        string // sidecar | artwork | extra
 	title       string
 	ownerSource string
 	depSources  []string
+}
+
+// extraItem is one parser-classified extra held back from the
+// video flow (v1.4.0) while its owning work is resolved from
+// the finished video targets.
+type extraItem struct {
+	file   orgFile
+	parsed ParsedName
+}
+
+// pendingSpecial is one video held back from the
+// not-identified list (v1.4.0) while the plan-wide Season 00
+// numbering pass decides it, with the reason it would carry
+// if it is not numbered after all.
+type pendingSpecial struct {
+	vp     *videoPlan
+	reason string
 }
 
 type linkPlanBuilder struct {
@@ -433,6 +465,14 @@ type linkPlanBuilder struct {
 	lv        map[*videoPlan]*linkVideo
 	destCache map[string]destDeviceInfo
 	pending   []pendingAttach
+	// v1.4.0 per-video honesty flags and display titles,
+	// consumed by makeEntry: assigned = the Season 00 number
+	// was created by the numbering pass; noYear = the movie
+	// linked without a year; cleanTitle overrides the entry
+	// title where the planner cleaned it (year-less movies).
+	assigned   map[*videoPlan]bool
+	noYear     map[*videoPlan]bool
+	cleanTitle map[*videoPlan]string
 }
 
 func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank linkRankResolver) (*LinkPlan, error) {
@@ -471,6 +511,8 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 	b := &linkPlanBuilder{
 		plan: plan, cfg: cfg, resolve: resolveRank,
 		lv: map[*videoPlan]*linkVideo{}, destCache: map[string]destDeviceInfo{},
+		assigned: map[*videoPlan]bool{}, noYear: map[*videoPlan]bool{},
+		cleanTitle: map[*videoPlan]string{},
 	}
 
 	filesByDir, symlinked, err := collectOrgFiles(absSource)
@@ -486,12 +528,26 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 	// targets under the TARGET root. ----
 	videosByDir := map[string][]*videoPlan{}
 	var videos []*videoPlan
+	var extras []extraItem
+	var specials []pendingSpecial
 	for _, files := range filesByDir {
 		for _, f := range files {
 			if !mediaExts[f.Ext] {
 				continue
 			}
 			vp := &videoPlan{File: f, Parsed: parseName(f.Path, absSource)}
+			// v1.4.0: extras divert OUT of the video flow when
+			// the link_extras switch is on — they are not
+			// videos (they must never own sidecars, win a
+			// keeper contest, or count as a folder's work), so
+			// they wait for the extras pass below, which
+			// resolves each one's owning work from the
+			// finished video targets. Samples never divert:
+			// they stay exactly where they are today.
+			if vp.Parsed.Kind == "extra" && cfg.LinkExtras && !isSamplePath(f, absSource) {
+				extras = append(extras, extraItem{file: f, parsed: vp.Parsed})
+				continue
+			}
 			lv := &linkVideo{vp: vp}
 			b.lv[vp] = lv
 			target, targetDir, targetStem, workDir, reason := buildVideoTarget(absTarget, f, vp.Parsed)
@@ -500,6 +556,41 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 				// should make this unreachable.
 				reason = "planned target would escape the target folder — left in place"
 			}
+			if reason != "" && cfg.AssignSpecialNumbers && !isSamplePath(f, absSource) {
+				// v1.4.0 Ruling 1: a special-signalling file
+				// with an identified series is held for the
+				// plan-wide Season 00 numbering pass instead
+				// of being filed as unidentified here —
+				// numbering needs every special of the series
+				// in the plan, which only the whole walk knows.
+				if _, _, ok := specialSeriesFor(f, vp.Parsed, absSource); ok {
+					vp.Status = "special-pending"
+					specials = append(specials, pendingSpecial{vp: vp, reason: reason})
+					videos = append(videos, vp)
+					videosByDir[f.Dir] = append(videosByDir[f.Dir], vp)
+					continue
+				}
+			}
+			if reason == "no year found" && cfg.AllowYearlessMovies && !isSamplePath(f, absSource) {
+				// v1.4.0 Ruling 2: a year-less movie in a movie
+				// context links as Title/Title.ext. The target
+				// is built here, from the planner-cleaned
+				// title; everything downstream (grouping,
+				// collisions, occupants) treats it as an
+				// ordinary movie candidate.
+				if title, ok := yearlessMovieTitle(f, vp.Parsed, absSource); ok {
+					if folder := sanitizeSegment(title); folder != "" {
+						vp.TargetDir = filepath.Join(absTarget, folder)
+						vp.TargetStem = folder
+						vp.WorkDir = vp.TargetDir
+						vp.Target = filepath.Join(vp.TargetDir, folder+f.ExtOrig)
+						vp.Status = "candidate"
+						b.noYear[vp] = true
+						b.cleanTitle[vp] = title
+						reason = ""
+					}
+				}
+			}
 			if reason != "" {
 				vp.Status = "unidentified"
 				plan.NotIdentified = append(plan.NotIdentified, LinkSkip{
@@ -507,7 +598,7 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 					Parsed: linkParsedFact(vp.Parsed), Ext: f.Ext, Size: f.Size,
 				})
 				lv.outKind, lv.outA = "notidentified", len(plan.NotIdentified)-1
-			} else {
+			} else if vp.Status != "candidate" {
 				vp.Target, vp.TargetDir, vp.TargetStem, vp.WorkDir = target, targetDir, targetStem, workDir
 				vp.Status = "candidate"
 			}
@@ -515,6 +606,18 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 			videosByDir[f.Dir] = append(videosByDir[f.Dir], vp)
 		}
 	}
+
+	// ---- Pass 1.5 (v1.4.0): the Season 00 numbering pass.
+	// Each held special gets a CREATED episode number:
+	// Season 00, numbered 1..N per series in sorted
+	// source-path order across ALL of the series' qualifying
+	// specials in this plan — one numbering space per series,
+	// deterministic for a given tree. The synthesized parse
+	// goes through the ordinary episode branch of
+	// buildVideoTarget, so an assigned special is a normal
+	// episode candidate from here on (grouping, collisions,
+	// sidecars), flagged number_assigned on its entry. ----
+	b.assignSpecialNumbers(specials, absTarget)
 
 	// ---- Pass 2: resolve each video target group. ----
 	groups := map[string][]*videoPlan{}
@@ -534,10 +637,26 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 		b.resolveVideoGroup(groups[k][0].Target, groups[k])
 	}
 
+	// ---- Pass 2.5 (v1.4.0): extras find their owning work.
+	// An extra links only when exactly one work owns it: the
+	// deepest folder on the extra's own ancestor chain (its
+	// own folder included) whose SUBTREE holds target-built
+	// videos of exactly one work decides — deeper folders win
+	// over shallower ones, and a folder whose subtree mixes
+	// two works refuses rather than guesses. The link target
+	// is <that work's folder>/extras/<cleaned extra title>,
+	// the Jellyfin-documented catch-all extras folder, and
+	// the candidate rides the ordinary Pass 4 classification
+	// (occupants, same-target groups, feasibility) — two
+	// extras cleaning to one name are a collision there,
+	// never a keeper contest. An extra with no unambiguous
+	// owner stays not-identified with today's reason. ----
+	var cands []*linkCandidate
+	cands = append(cands, b.planExtras(extras, videos, absSource, absTarget)...)
+
 	// ---- Pass 3: sidecars + folder artwork for selected
 	// videos only; everything else is attached to its owner's
 	// outcome or skipped in the move planner's shapes. ----
-	var cands []*linkCandidate
 	for dir, files := range filesByDir {
 		for _, f := range files {
 			if mediaExts[f.Ext] {
@@ -590,6 +709,8 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 			st.Sidecars++
 		case "artwork":
 			st.Artwork++
+		case "extra":
+			st.Extras++
 		}
 	}
 	plan.Warnings = append(plan.Warnings, linkScanOverlapWarnings(cfg.Roots, absTarget)...)
@@ -699,11 +820,24 @@ func (b *linkPlanBuilder) feasibilityReason(vp *videoPlan, target string) (strin
 
 // makeEntry builds the LinkEntry for a selected video.
 func (b *linkPlanBuilder) makeEntry(vp *videoPlan, destDev uint64) LinkEntry {
-	return LinkEntry{
+	e := LinkEntry{
 		Source: vp.File.Path, Target: vp.Target, Kind: vp.Parsed.Kind, Title: vp.Parsed.Title,
 		SourceDev: vp.File.Dev, SourceIno: vp.File.Ino, SourceSize: vp.File.Size,
 		SourceMtimeUnix: vp.File.ModTimeUnixNano, DestinationDev: destDev,
 	}
+	// v1.4.0 honesty flags: a created Season 00 number and a
+	// year-less acceptance are planner inventions, and the
+	// entry says so wherever it travels (UI, export, apply).
+	if b.assigned[vp] {
+		e.NumberAssigned = true
+	}
+	if b.noYear[vp] {
+		e.NoYear = true
+	}
+	if t, ok := b.cleanTitle[vp]; ok {
+		e.Title = t
+	}
+	return e
 }
 
 // addVideoConflict records one occupied video target and marks
@@ -1433,6 +1567,375 @@ func (b *linkPlanBuilder) addCandidateUnlinkable(rep *linkCandidate, ex []*linkC
 	for _, c := range ex {
 		plan.Unlinkable = append(plan.Unlinkable, skipFor(c.file))
 	}
+}
+
+// ---- v1.4.0: extras linking, assigned special numbers,
+// year-less movies. The three diversions share two guards:
+// the sample gate (a sample is junk, never bonus content and
+// never a special) and the toggles on Config, each of which
+// restores the pre-1.4.0 outcome exactly when off. ----
+
+// isSamplePath is the sample gate every v1.4.0 diversion
+// checks first: a file is a sample when any folder on its
+// path is named exactly "sample"/"samples", or its stem
+// carries a sample marker ("-sample", ".sample", " sample",
+// or a leading "sample-"/"sample."/"sample "). These are the
+// signals that already route real-tree samples to the extras
+// reason today: the parser's extras suffix list contains
+// "-sample", and sample folders are the standard pack layout
+// for preview clips. (The scanner's health pattern list is
+// deliberately NOT reused: it also matches trailers and
+// featurettes, which are genuine, linkable extras.)
+func isSamplePath(f orgFile, root string) bool {
+	for _, part := range dirPartsOf(f, root) {
+		switch strings.ToLower(strings.TrimSpace(part)) {
+		case "sample", "samples":
+			return true
+		}
+	}
+	stem := strings.ToLower(f.Stem)
+	if strings.Contains(stem, "-sample") || strings.Contains(stem, ".sample") || strings.Contains(stem, " sample") {
+		return true
+	}
+	return strings.HasPrefix(stem, "sample-") || strings.HasPrefix(stem, "sample.") || strings.HasPrefix(stem, "sample ")
+}
+
+// dirPartsOf returns f's folder parts relative to the source
+// root (empty when f sits in the root itself).
+func dirPartsOf(f orgFile, root string) []string {
+	rel, err := filepath.Rel(root, f.Dir)
+	if err != nil || rel == "." {
+		return nil
+	}
+	return strings.Split(rel, string(os.PathSeparator))
+}
+
+// folderTitleClean cleans one folder name to a display title
+// the way the parser cleans folder context (parser.go's
+// folder-title path): bracket blocks out, parenthesized
+// release furniture out, release tags and years dropped.
+func folderTitleClean(part string) string {
+	var tags []string
+	return strings.Join(cleanTokens(stripParenFurniture(reBrack.ReplaceAllString(part, " ")), &tags), " ")
+}
+
+// cleanedNameTitle cleans a filename stem to a display title
+// with every bracket/parenthesis block removed first (group
+// and release furniture), then the parser's movie-path token
+// cleaning (years kept — a year-less movie has none to keep,
+// and a year that is part of a title survives).
+func cleanedNameTitle(stem string) string {
+	s := reParen.ReplaceAllString(reBrack.ReplaceAllString(stem, " "), " ")
+	var tags []string
+	return strings.Join(cleanTokensMode(s, &tags, false), " ")
+}
+
+// specialSeriesFor decides whether a file the layout builder
+// could not place is a Ruling 1 special: a non-extra,
+// non-sample TV file with an identified series but no episode
+// number, signalling special-ness. It returns the series
+// identity the created number belongs to. Two routes:
+//
+//   - episode parses: the series is the parse's own title,
+//     and any signal qualifies (see hasSpecialSignal).
+//   - movie parses inside a series tree: an "OVA" folder
+//     part claims the file for the series named by the
+//     folder directly above it (the Yu Yu Hakusho shape:
+//     "Yu Yu Hakusho/OVA/…" files whose names parse as
+//     movies). The year-less movie path never sees these —
+//     this check runs first in the planner.
+//
+// A fractional parse is refused: its number exists but is
+// fractional — episode intent that merely failed a pattern,
+// which the ruling explicitly leaves unidentified.
+func specialSeriesFor(f orgFile, pn ParsedName, root string) (title string, year int, ok bool) {
+	if pn.Special == "fractional" {
+		return "", 0, false
+	}
+	parts := dirPartsOf(f, root)
+	if pn.Kind == "movie" {
+		for i, part := range parts {
+			if strings.ToLower(strings.TrimSpace(part)) == "ova" && i > 0 {
+				if t := folderTitleClean(parts[i-1]); t != "" {
+					return t, 0, true
+				}
+			}
+		}
+		return "", 0, false
+	}
+	if pn.Kind != "episode" || pn.Title == "" || len(pn.Episodes) != 0 {
+		return "", 0, false
+	}
+	if hasSpecialSignal(f, pn, parts) {
+		return pn.Title, pn.Year, true
+	}
+	return "", 0, false
+}
+
+// hasSpecialSignal reports whether an episode parse with no
+// episode number signals special-ness by any of the ruling's
+// markers: an explicit Season 00 parse, an "S00" token in the
+// name, the word "Special"/"Specials" in the name or a folder
+// name, a Specials or OVA folder, an OVA token in the name,
+// or "making of" in the name or a folder name.
+func hasSpecialSignal(f orgFile, pn ParsedName, parts []string) bool {
+	if pn.Season == 0 {
+		return true
+	}
+	for _, tok := range looseTokens(f.Stem) {
+		switch tok {
+		case "s00", "special", "specials", "ova":
+			return true
+		}
+	}
+	if hasMakingOf(f.Stem) {
+		return true
+	}
+	for _, part := range parts {
+		switch strings.ToLower(strings.TrimSpace(part)) {
+		case "specials", "ova":
+			return true
+		}
+		for _, tok := range looseTokens(part) {
+			if tok == "special" || tok == "specials" {
+				return true
+			}
+		}
+		if hasMakingOf(part) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMakingOf reports whether a name chunk carries the phrase
+// "making of" under any of the usual separators ("The Making
+// of …", "The.Making.of.…", "Making_of_…"): the chunk is
+// separator-normalized before the phrase test, because the
+// dotted release form is exactly how the real making-of file
+// in the corpus is named.
+func hasMakingOf(s string) bool {
+	norm := strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(strings.ToLower(s))
+	return strings.Contains(norm, "making of")
+}
+
+// yearlessMovieTitle decides whether a movie parse with no
+// year sits in a MOVIE context (Ruling 2) and returns the
+// planner-cleaned title it links under. The context guard is
+// the whole rule — a clean title alone is not enough:
+//
+//   - (a) its parent folder is the work's own folder: the
+//     parent's cleaned title EQUALS the movie's cleaned
+//     title (both sides are furniture-stripped first, so a
+//     file named "<Folder> (BD 720p) (Group)" still equals
+//     its folder). Equality, never a prefix: a prefix test
+//     lets pack-root strays in — a series pack root cleans
+//     to the series name, and every file in it whose name
+//     starts with that name (an OVA, an "Ending" clip in a
+//     season folder) would pass. Measured on the real
+//     corpus: the prefix form qualified exactly those
+//     strays; equality qualifies only the own-folder movie.
+//   - (b) an ancestor folder names a Movies context: its
+//     cleaned title ends in the word "Movies"/"Movie" and
+//     the movie's title starts with the text before that
+//     word (the Macross Frontier shape: a "… Frontier
+//     Movies" folder holding the Frontier movie).
+//
+// Files inside a series tree fail both tests by construction
+// (no folder matches their title, no ancestor names a movies
+// context they belong to), so OP/ED clips, CM/PV files and
+// other series-tree strays stay unidentified exactly as
+// before. The comparison title is the planner-cleaned one
+// (bracket/paren furniture stripped): the parser's raw title
+// for such files still carries group names, which are
+// furniture, not title.
+func yearlessMovieTitle(f orgFile, pn ParsedName, root string) (string, bool) {
+	if pn.Kind != "movie" || pn.Year != 0 {
+		return "", false
+	}
+	title := cleanedNameTitle(f.Stem)
+	if title == "" {
+		return "", false
+	}
+	movieNorm := normalizeTitle(title)
+	parts := dirPartsOf(f, root)
+	if len(parts) == 0 {
+		return "", false // no folder context at all
+	}
+	if parentNorm := normalizeTitle(folderTitleClean(parts[len(parts)-1])); parentNorm != "" {
+		if parentNorm == movieNorm {
+			return title, true
+		}
+	}
+	for _, part := range parts {
+		toks := strings.Fields(normalizeTitle(folderTitleClean(part)))
+		if len(toks) < 2 {
+			continue
+		}
+		if last := toks[len(toks)-1]; last == "movies" || last == "movie" {
+			pre := strings.Join(toks[:len(toks)-1], " ")
+			if movieNorm == pre || strings.HasPrefix(movieNorm, pre+" ") {
+				return title, true
+			}
+		}
+	}
+	return "", false
+}
+
+// assignSpecialNumbers is the plan-wide Season 00 numbering
+// pass (Pass 1.5): held specials are grouped by series, each
+// group is sorted by cleaned source path, and numbers are
+// created 1..N in that order. The synthesized parse re-enters
+// the ordinary episode layout, so the file competes and
+// links like any episode from here on — with its entry
+// flagged number_assigned. A special the layout builder
+// still refuses (defensive; the candidate checks should
+// make it unreachable) falls back to its original
+// not-identified record, untouched.
+func (b *linkPlanBuilder) assignSpecialNumbers(specials []pendingSpecial, absTarget string) {
+	if len(specials) == 0 {
+		return
+	}
+	type specGroup struct {
+		title string
+		year  int
+		vps   []*videoPlan
+	}
+	groups := map[string]*specGroup{}
+	var keys []string
+	reasons := map[*videoPlan]string{}
+	fileUnidentified := func(vp *videoPlan) {
+		vp.Status = "unidentified"
+		b.plan.NotIdentified = append(b.plan.NotIdentified, LinkSkip{
+			Path: vp.File.Path, Reason: reasons[vp],
+			Parsed: linkParsedFact(vp.Parsed), Ext: vp.File.Ext, Size: vp.File.Size,
+		})
+		lv := b.lv[vp]
+		lv.outKind, lv.outA = "notidentified", len(b.plan.NotIdentified)-1
+	}
+	for _, ps := range specials {
+		reasons[ps.vp] = ps.reason
+		title, year, ok := specialSeriesFor(ps.vp.File, ps.vp.Parsed, b.plan.SourceRoot)
+		if !ok {
+			// Cannot happen (Pass 1 admitted the file via the
+			// same check on the same inputs) — but a held file
+			// is never dropped silently: it falls back to its
+			// original not-identified record.
+			fileUnidentified(ps.vp)
+			continue
+		}
+		key := normalizeTitle(title) + "\x00" + fmt.Sprint(year)
+		g, exists := groups[key]
+		if !exists {
+			g = &specGroup{title: title, year: year}
+			groups[key] = g
+			keys = append(keys, key)
+		}
+		g.vps = append(g.vps, ps.vp)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		g := groups[key]
+		sort.Slice(g.vps, func(i, j int) bool { return g.vps[i].File.Path < g.vps[j].File.Path })
+		for i, vp := range g.vps {
+			synth := vp.Parsed
+			synth.Kind = "episode"
+			synth.Title = g.title
+			synth.NormTitle = normalizeTitle(g.title)
+			synth.Year = g.year
+			synth.Season = 0
+			synth.Episodes = []int{i + 1}
+			synth.Special = ""
+			target, targetDir, targetStem, workDir, reason := buildVideoTarget(absTarget, vp.File, synth)
+			if reason != "" || !pathWithinRoot(absTarget, target) {
+				fileUnidentified(vp)
+				continue
+			}
+			vp.Parsed = synth
+			vp.Target, vp.TargetDir, vp.TargetStem, vp.WorkDir = target, targetDir, targetStem, workDir
+			vp.Status = "candidate"
+			b.assigned[vp] = true
+		}
+	}
+}
+
+// planExtras resolves each diverted extra's owning work and
+// builds its link candidate (Pass 2.5). The owner rule: walk
+// the extra's folder chain upward — its own folder first —
+// and let the FIRST folder whose subtree holds target-built
+// videos decide: exactly one work in that subtree owns the
+// extra; more than one refuses (never a guess). The extra's
+// target is <owner work folder>/extras/<cleaned title>, the
+// documented Jellyfin catch-all extras folder (Jellyfin
+// documentation, "Movies" — media organization, Extras
+// section: extras for movies, series and seasons live in
+// subfolders of the work's folder, "extras" being the
+// generic one). Extras with no unambiguous owner, or an
+// empty cleaned title, stay not-identified with the
+// pre-1.4.0 reason.
+func (b *linkPlanBuilder) planExtras(extras []extraItem, videos []*videoPlan, absSource, absTarget string) []*linkCandidate {
+	if len(extras) == 0 {
+		return nil
+	}
+	// subtreeWorks[dir][workDir] = one source path of that
+	// work under dir (the smallest, for determinism).
+	subtreeWorks := map[string]map[string]string{}
+	for _, vp := range videos {
+		if vp.Target == "" || vp.WorkDir == "" {
+			continue
+		}
+		for d := vp.File.Dir; ; d = filepath.Dir(d) {
+			m := subtreeWorks[d]
+			if m == nil {
+				m = map[string]string{}
+				subtreeWorks[d] = m
+			}
+			if cur, ok := m[vp.WorkDir]; !ok || vp.File.Path < cur {
+				m[vp.WorkDir] = vp.File.Path
+			}
+			if d == absSource || filepath.Dir(d) == d {
+				break
+			}
+		}
+	}
+	sorted := append([]extraItem{}, extras...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].file.Path < sorted[j].file.Path })
+	var out []*linkCandidate
+	for _, it := range sorted {
+		var workDir, ownerSource string
+		owned := false
+		for d := it.file.Dir; ; d = filepath.Dir(d) {
+			if m, ok := subtreeWorks[d]; ok && len(m) > 0 {
+				if len(m) == 1 {
+					for wd, src := range m {
+						workDir, ownerSource = wd, src
+					}
+					owned = true
+				}
+				break // the deepest folder with any work decides
+			}
+			if d == absSource || filepath.Dir(d) == d {
+				break
+			}
+		}
+		title := sanitizeSegment(it.parsed.Title)
+		target := ""
+		if owned && title != "" {
+			target = filepath.Join(workDir, "extras", title+it.file.ExtOrig)
+		}
+		if target == "" || !pathWithinRoot(absTarget, target) {
+			b.plan.NotIdentified = append(b.plan.NotIdentified, LinkSkip{
+				Path: it.file.Path, Reason: "extra content — left in place",
+				Parsed: linkParsedFact(it.parsed), Ext: it.file.Ext, Size: it.file.Size,
+			})
+			continue
+		}
+		out = append(out, &linkCandidate{
+			file: it.file, target: target, kind: "extra",
+			title: it.parsed.Title, ownerSource: ownerSource,
+		})
+	}
+	return out
 }
 
 // linkScanOverlapWarnings computes the scan-root overlap

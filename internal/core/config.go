@@ -107,6 +107,12 @@ func defaultConfig() *Config {
 		// v1.3.2: the Donate toggle defaults ON — the
 		// online-conditional behavior is what ships.
 		KofiEnabled: true,
+		// v1.4.0: the three link-library behaviors ship ON —
+		// that is the behavior the owner ordered; each is a
+		// Settings switch away from the pre-1.4.0 plan.
+		LinkExtras:           true,
+		AssignSpecialNumbers: true,
+		AllowYearlessMovies:  true,
 	}
 	if p, err := exec.LookPath("ffprobe"); err == nil {
 		c.FFprobePath = p
@@ -251,6 +257,27 @@ func loadConfig(dataDir string) (*Config, string) {
 		}
 		if kofiProbe.KofiEnabled != nil {
 			c.KofiEnabled = *kofiProbe.KofiEnabled
+		}
+	}
+	// v1.4.0: the three link-library switches get the same
+	// presence-aware treatment (their defaults are TRUE, so
+	// the numeric merge rule cannot express them): a config
+	// written before v1.4.0 has none of the keys and keeps
+	// all three ON; an explicitly saved OFF is honored.
+	var v140Probe struct {
+		LinkExtras           *bool `json:"link_extras"`
+		AssignSpecialNumbers *bool `json:"assign_special_numbers"`
+		AllowYearlessMovies  *bool `json:"allow_yearless_movies"`
+	}
+	if err := json.Unmarshal(b, &v140Probe); err == nil {
+		if v140Probe.LinkExtras != nil {
+			c.LinkExtras = *v140Probe.LinkExtras
+		}
+		if v140Probe.AssignSpecialNumbers != nil {
+			c.AssignSpecialNumbers = *v140Probe.AssignSpecialNumbers
+		}
+		if v140Probe.AllowYearlessMovies != nil {
+			c.AllowYearlessMovies = *v140Probe.AllowYearlessMovies
 		}
 	}
 	if saved.FFprobePath != "" {

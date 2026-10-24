@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.6)
+# Install — Ultra.cc (WellKeptLib v1.4.0)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,29 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.4.0:** three additions to the link library,
+each with its own switch under Settings → Link library
+(all on unless you turn them off):
+
+- **Extras join the library.** Trailers, featurettes,
+  deleted scenes, commentaries and other extras now get a
+  hardlink in their show's or movie's `extras` folder when
+  you build the link library, instead of being left behind
+  as "extra content". (Extras still never *move* — this is
+  the link library only. Sample files still never link.)
+- **Specials get a Season 00 number.** A TV special that
+  names no episode number — a holiday special, an OVA, a
+  making-of — is given the next Season 00 number for its
+  series, so it links like any other episode. The number
+  is created by the app, not found in the name, and the
+  plan says so: those entries are badged "S00 · assigned".
+- **Movies no longer need a year in the name.** A movie
+  whose file name has no year still links — as
+  `Title/Title` with no "(Year)" — when it sits in its own
+  movie folder or in a folder that names a Movies
+  collection. Those entries are badged "no year". Files
+  inside a series tree are never treated this way.
 
 **New in v1.3.6:** one fix. A season folder whose name
 says it comes "with an extra episode" (for example a folder

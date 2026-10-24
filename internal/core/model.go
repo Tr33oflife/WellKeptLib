@@ -111,6 +111,37 @@ type Config struct {
 	// rule, or an older config without the key would read
 	// as OFF.
 	KofiEnabled bool `json:"kofi_enabled"`
+	// v1.4.0 link-library preferences — all three are
+	// PREFERENCES, not tuning: ResetTuning deliberately
+	// leaves them alone. All three default ON and need the
+	// presence-aware load merge (the EmbeddedAudit pattern)
+	// for the same reason KofiEnabled does.
+	//
+	// LinkExtras: extras (trailers, featurettes, deleted
+	// scenes, commentaries, NCOP/NCED — everything the parser
+	// classifies "extra") get hardlinks into the built
+	// library's per-work extras/ folder. Link mode only:
+	// extras still never MOVE. OFF reproduces the pre-1.4.0
+	// plan exactly (extras stay "extra content — left in
+	// place"). Samples never link either way.
+	LinkExtras bool `json:"link_extras"`
+	// AssignSpecialNumbers: a TV file with an identified
+	// series but no episode number that signals special-ness
+	// (an S00 marker, the word "Special", a Specials/OVA
+	// folder, a making-of) is given the next Season 00 number
+	// for its series, in sorted source-path order. The number
+	// is CREATED, never found in the name — plan entries
+	// carry it flagged (number_assigned) and the UI badges
+	// it, so an invented number is never silent. OFF leaves
+	// such files unidentified, as before.
+	AssignSpecialNumbers bool `json:"assign_special_numbers"`
+	// AllowYearlessMovies: a movie whose name carries no
+	// year still links — as Title/Title.ext with no (Year) —
+	// when it sits in a movie context (its own folder, or a
+	// folder naming Movies). Plan entries are flagged
+	// (no_year) and badged. OFF restores the pre-1.4.0 law:
+	// a movie with no year is not identified.
+	AllowYearlessMovies bool `json:"allow_yearless_movies"`
 }
 
 // StreamInfo is the flattened per-stream view of an ffprobe stream that

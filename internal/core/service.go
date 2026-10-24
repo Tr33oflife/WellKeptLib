@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.3.6"
+const Version = "1.4.0"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -585,6 +585,11 @@ func (s *Service) SaveConfig(in Config) error {
 	if err := checkKofiUsername(in.KofiUsername); err != nil {
 		return err
 	}
+	// The v1.4.0 link-library switches (LinkExtras,
+	// AssignSpecialNumbers, AllowYearlessMovies) ride the
+	// KofiEnabled rule: plain bools, authoritative as sent,
+	// with the handler pre-filling the current values when a
+	// stale page's save omits the keys. No clamp applies.
 	// Roots saved through Settings get the same input hygiene as
 	// roots sent to StartScan (quotes/tilde/env expansion, v0.1.1).
 	cleaned := make([]string, 0, len(in.Roots))

@@ -62,6 +62,11 @@ type linkManifestEntry struct {
 	SourceIno uint64 `json:"source_ino"`
 	Done      bool   `json:"done"`
 	Undone    bool   `json:"undone"`
+	// Kind (v1.4.0, additive): the plan entry's kind
+	// (movie | episode | sidecar | artwork | extra),
+	// recorded so a manifest says what each link IS.
+	// Pre-1.4.0 manifests have no kind; Undo never reads it.
+	Kind string `json:"kind,omitempty"`
 }
 
 // LinkManifestSummary is one row of the "past link builds" list.
@@ -321,7 +326,7 @@ func (s *Service) linkApplyLocked(planID string, prog linkProgressFunc) (*LinkAp
 	}
 	workIndex := map[string]int{} // target -> manifest link index
 	for i, e := range work {
-		m.Links = append(m.Links, linkManifestEntry{Source: e.Source, Target: e.Target, SourceDev: e.SourceDev, SourceIno: e.SourceIno})
+		m.Links = append(m.Links, linkManifestEntry{Source: e.Source, Target: e.Target, SourceDev: e.SourceDev, SourceIno: e.SourceIno, Kind: e.Kind})
 		workIndex[e.Target] = i
 	}
 	if err := s.writeLinkManifest(m); err != nil {

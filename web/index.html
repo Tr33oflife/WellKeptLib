@@ -699,6 +699,7 @@ try {
       <p class="dim small" style="max-width:840px">Editing the file through either name edits the same shared content. Deleting the original name does not free the file's space while a link remains; the space is freed only when the last name for that file is deleted.</p>
       <p class="dim small" style="max-width:840px">Apply creates folders and links only. It never moves, renames, copies, deletes, or edits an original.</p>
       <p class="dim small" style="max-width:840px">After a preview, <b>Export problems (JSON)</b> downloads one file listing everything that could not be linked — every collision, unidentified and unlinkable file, with the reasons and the evidence behind each — so naming problems can be diagnosed in bulk.</p>
+      <p class="dim small" style="max-width:840px">Extras (trailers, featurettes, deleted scenes, commentaries) link into their show's or movie's <span class="mono">extras</span> folder; unnumbered TV specials are given a created Season 00 number, badged <span class="badge b-amber">S00 · assigned</span>; and a movie whose name has no year can still link from its own movie folder, badged <span class="badge b-amber">no year</span>. All three behaviors have switches under Settings → Link library.</p>
     </div>
     <div class="toolbar" style="align-items:flex-end">
       <div style="flex:1;min-width:260px">
@@ -780,6 +781,22 @@ try {
       <div class="small"><input type="checkbox" id="cfg-kofi-enabled" style="vertical-align:-2px"> Show Ko-fi Donate button</div>
       <label>Ko-fi username</label><input id="cfg-kofi" style="width:320px" placeholder="your-ko-fi-username">
       <p class="dim small" style="margin:6px 0 0;max-width:760px">When the toggle is on, the floating Donate button appears when the app is online and silently stays away when it isn't — no error, nothing broken offline. Toggle off, and the app never even tries to load the button, whatever the connection. Leave the username blank to turn the button off entirely. A change takes effect on the next page load.</p>
+    </div>
+    <!-- Link library (v1.4.0): the three Organize link-mode
+         behaviors the owner ordered — extras link, specials
+         gain created Season 00 numbers, movies no longer
+         require a year in the name. All three are
+         PREFERENCES (Reset tuning leaves them alone), all
+         default ON, and each OFF restores the pre-1.4.0 plan
+         for its files exactly. -->
+    <div style="margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:18px">
+      <h2>Link library</h2>
+      <div class="small"><input type="checkbox" id="cfg-link-extras" style="vertical-align:-2px"> Link extras into the library</div>
+      <p class="dim small" style="margin:4px 0 10px;max-width:760px">Trailers, featurettes, deleted scenes, commentaries and other extras get a hardlink in their show's or movie's <span class="mono">extras</span> folder when a link library is built. Extras still never <i>move</i> — this is link mode only. Samples never link. Off: extras stay in place, as before.</p>
+      <div class="small"><input type="checkbox" id="cfg-assign-special-numbers" style="vertical-align:-2px"> Give unnumbered specials a Season 00 number</div>
+      <p class="dim small" style="margin:4px 0 10px;max-width:760px">A TV special that names no episode number (an S00 marker, the word “Special”, a Specials/OVA folder, a making-of) is given the next Season 00 number for its series, in name order. The number is <b>created, not found</b> — the plan badges it “S00 · assigned” so it is never silent. Off: such files stay unidentified, as before.</p>
+      <div class="small"><input type="checkbox" id="cfg-allow-yearless-movies" style="vertical-align:-2px"> Link movies whose name has no year</div>
+      <p class="dim small" style="margin:4px 0 0;max-width:760px">A movie with no year in its name still links — as <span class="mono">Title/Title.ext</span>, badged “no year” — when it sits in its own movie folder or a folder naming a Movies context. Files inside a series tree never take this path. Off: a movie needs a year, as before.</p>
     </div>
     <div class="grid2">
       <div>
@@ -2076,6 +2093,12 @@ async function refreshSettings(){
   // default.
   initKofi(currentCfg && currentCfg.kofi_username, currentCfg && currentCfg.kofi_enabled !== false);
   $("cfg-kofi-enabled").checked = currentCfg && currentCfg.kofi_enabled !== false;
+  // Link library (v1.4.0): the three link-mode switches,
+  // filled with the same !== false idiom (absent = ON,
+  // matching the server default).
+  $("cfg-link-extras").checked = !currentCfg || currentCfg.link_extras !== false;
+  $("cfg-assign-special-numbers").checked = !currentCfg || currentCfg.assign_special_numbers !== false;
+  $("cfg-allow-yearless-movies").checked = !currentCfg || currentCfg.allow_yearless_movies !== false;
   if (document.activeElement !== $("cfg-kofi")) $("cfg-kofi").value = (currentCfg && currentCfg.kofi_username) || "";
   $("cfg-ffprobe").value = currentCfg.ffprobe_path || "";
   $("cfg-ffmpeg").value = currentCfg.ffmpeg_path || "";
@@ -2151,6 +2174,10 @@ $("btn-cfg-save").addEventListener("click", async () => {
     embedded_audit: $("cfg-embedded-audit").checked,
     kofi_enabled: $("cfg-kofi-enabled").checked,
     kofi_username: $("cfg-kofi").value.trim(),
+    // Link library (v1.4.0) rides the same save.
+    link_extras: $("cfg-link-extras").checked,
+    assign_special_numbers: $("cfg-assign-special-numbers").checked,
+    allow_yearless_movies: $("cfg-allow-yearless-movies").checked,
     wanted_languages: $("cfg-wanted-langs").value.split(/[,\s]+/).map(s => s.trim()).filter(Boolean),
     // Automation (v1.0.0) rides the same save.
     schedule_enabled: $("cfg-schedule-enabled").checked,
@@ -2941,7 +2968,7 @@ function renderLinkPlan(resultHTML){
   if (!linkPlanData){ box.innerHTML = ""; return; }
   const p = linkPlanData, st = p.stats || {};
   let h = '<div class="chips" style="margin:14px 0 4px">' +
-    '<span class="chip">Links to create <b>' + (st.links_to_create||0) + "</b> — " + (st.movies||0) + " movies · " + (st.episodes||0) + " episodes · " + (st.sidecars||0) + " sidecars · " + (st.artwork||0) + " artwork</span>" +
+    '<span class="chip">Links to create <b>' + (st.links_to_create||0) + "</b> — " + (st.movies||0) + " movies · " + (st.episodes||0) + " episodes · " + (st.sidecars||0) + " sidecars · " + (st.artwork||0) + " artwork" + ((st.extras||0) ? " · " + st.extras + " extras" : "") + "</span>" +
     '<span class="chip">Already linked <b>' + (st.already_linked||0) + "</b></span>" +
     '<span class="chip warn">Collisions <b>' + (st.collision_groups||0) + "</b> groups · " + (st.alternates||0) + " alternates</span>" +
     '<span class="chip warn">Target conflicts <b>' + (st.target_conflict_targets||0) + "</b> targets</span>" +
@@ -2955,16 +2982,28 @@ function renderLinkPlan(resultHTML){
   // when every copy in it measures 0. Only a measured 0 is
   // flagged: a missing fact is not a measurement.
   const zeroBadge = ' <span class="badge b-red">0-BYTE</span>';
-  if ((p.links_to_create||[]).length){
-    h += planSection("lk-create", "Links to create — " + p.links_to_create.length,
-      '<div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
-      p.links_to_create.map(e => '<tr><td><span class="badge b-blue">' + esc(e.kind) + '</span></td><td class="mono dim">' + esc(linkRelSrc(e.source)) + (e.source_size === 0 ? zeroBadge : "") + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
-      "</tbody></table></div>", true);
+  // v1.4.0 honesty badges: a created Season 00 number and a
+  // year-less acceptance are planner inventions — the entry
+  // carries the flag and the plan shows it, never silently.
+  const flagBadges = e => (e.number_assigned ? ' <span class="badge b-amber">S00 · assigned</span>' : "") + (e.no_year ? ' <span class="badge b-amber">no year</span>' : "");
+  const linkRow = e => '<tr><td><span class="badge b-blue">' + esc(e.kind) + '</span></td><td class="mono dim">' + esc(linkRelSrc(e.source)) + (e.source_size === 0 ? zeroBadge : "") + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + flagBadges(e) + "</td></tr>";
+  const linkTable = rows => '<div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' + rows.map(linkRow).join("") + "</tbody></table></div>";
+  // v1.4.0: extras get their own group in the collapsible
+  // section system — folded, count visible — instead of
+  // mixing into the main list: on a real tree they are a
+  // long tail of bonus content under a handful of videos.
+  const extraRows = (p.links_to_create||[]).filter(e => e.kind === "extra");
+  const mainRows = (p.links_to_create||[]).filter(e => e.kind !== "extra");
+  if (mainRows.length){
+    h += planSection("lk-create", "Links to create — " + mainRows.length, linkTable(mainRows), true);
+  }
+  if (extraRows.length){
+    h += planSection("lk-extras", "Extras — " + extraRows.length, linkTable(extraRows), false);
   }
   if ((p.already_linked||[]).length){
     h += planSection("lk-already", "Already linked — " + p.already_linked.length,
       '<p class="dim small" style="margin:0 0 6px">These targets already hold a hardlink to the source (device + inode identity matched). Apply leaves them exactly as they are.</p><div style="overflow-x:auto"><table><thead><tr><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
-      p.already_linked.map(e => '<tr><td class="mono dim">' + esc(linkRelSrc(e.source)) + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
+      p.already_linked.map(e => '<tr><td class="mono dim">' + esc(linkRelSrc(e.source)) + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + flagBadges(e) + "</td></tr>").join("") +
       "</tbody></table></div>", false);
   }
   if ((p.collisions||[]).length){
@@ -3044,7 +3083,7 @@ function renderLinkPlan(resultHTML){
   const undoBtn = $("btn-link-undo-last");
   if (undoBtn) undoBtn.addEventListener("click", () => undoLinkBuild(linkManifestID));
   wireSkipToggles("link");
-  wirePlanSections(["lk-create", "lk-already", "lk-coll", "lk-conf", "lk-unlink", "lk-notid", "lk-skip"]);
+  wirePlanSections(["lk-create", "lk-extras", "lk-already", "lk-coll", "lk-conf", "lk-unlink", "lk-notid", "lk-skip"]);
 }
 
 // exportLinkProblems downloads the current link plan's

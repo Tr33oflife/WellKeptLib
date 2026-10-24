@@ -359,6 +359,13 @@ func (s *server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 	var probe struct {
 		KofiUsername *string `json:"kofi_username"`
 		KofiEnabled  *bool   `json:"kofi_enabled"`
+		// v1.4.0: the three link-library switches ride the
+		// same stale-page protection — a pre-1.4.0 tab's save
+		// carries none of the keys, and its decoded falses
+		// must not silently switch the new behaviors off.
+		LinkExtras           *bool `json:"link_extras"`
+		AssignSpecialNumbers *bool `json:"assign_special_numbers"`
+		AllowYearlessMovies  *bool `json:"allow_yearless_movies"`
 	}
 	if err := json.Unmarshal(body, &probe); err == nil {
 		current := s.svc.GetConfig()
@@ -367,6 +374,15 @@ func (s *server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		}
 		if probe.KofiEnabled == nil {
 			cfg.KofiEnabled = current.KofiEnabled
+		}
+		if probe.LinkExtras == nil {
+			cfg.LinkExtras = current.LinkExtras
+		}
+		if probe.AssignSpecialNumbers == nil {
+			cfg.AssignSpecialNumbers = current.AssignSpecialNumbers
+		}
+		if probe.AllowYearlessMovies == nil {
+			cfg.AllowYearlessMovies = current.AllowYearlessMovies
 		}
 	}
 	if err := s.svc.SaveConfig(cfg); err != nil {
