@@ -333,11 +333,11 @@ to the internet.
   files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
-  the bulk parser regression in `bulk_export_131_test.go`
-  skips in a standalone clone (its corpus is a real export,
-  not shipped here) and runs in full where the verification
-  copies exist — the two fractional-misfire victims it
-  covers are also pinned verbatim in `parser_131_test.go`
+  the bulk corpus tests in `bulk_export_131_test.go`
+  skip in a standalone clone (their corpus is a real
+  export, not shipped here) and run in full where the
+  verification copies exist — the victims they cover are
+  also pinned verbatim in `parser_131_test.go`
   (and the v1.3.6 extras flips and v1.4.0 marker flips in
   their own test files);
   and the Ko-fi username default is **carried as-is**
@@ -422,9 +422,9 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   deltas** (16 `[Extra]`-marker flips, 8 specials
   gaining S00 numbers, 2 year-less Macross movies),
   **0 unexplained**; the v1.3.1 victims and v1.3.6
-  flips behave as before. In this published tree the
-  test runs in full; in a standalone clone it skips —
-  see the transparency note.
+  flips behave as before. In this published tree both
+  corpus tests run in full; in a standalone clone they
+  skip — see the transparency note.
 - Page checks: 173 ids looked up / 204 defined, all
   resolve; the Node render harness passes **181/181**
   online (stub CDN seam), with offline / blank /
