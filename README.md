@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.2.0
+- **Version:** 1.3.0
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -19,7 +19,8 @@ double-click `.exe` on Windows.
 
 ## Screenshots
 
-Taken from a running 1.2.0 instance over a small synthetic
+Taken from a running 1.2.0 instance (the UI is unchanged in
+1.3.0 apart from one added button) over a small synthetic
 demo library (the same generated fixture library the tests
 use — no real collection is shown). All shots use the
 default Midnight theme except the last, which shows
@@ -119,6 +120,20 @@ create, collisions, and skips, before anything is written:**
   using this data folder"), 3 = only with `-fail-on-findings`,
   when a completed scan found reclaimable duplicates or
   health problems.
+- **Link-plan problems export (1.3.0).** In link mode, once
+  a plan exists, **Export problems (JSON)** downloads the
+  plan's full diagnostics (`wellkeptlib.linkplan.diagnostics`,
+  schema v1): every collision with all its sources, the
+  keeper pick *and its reasoning* (per-source parsed identity
+  + probe facts — resolution, HDR, bitrate, size, duration;
+  duration-gated groups export the keeper as an explicit
+  `null` with the reason), every target conflict with the
+  occupying file's facts, every unidentified file with the
+  planner's exact reason, and every unlinkable file with its
+  cause. Healthy categories are counts-only, and the
+  document's own `notes` field says so. Exporting is
+  read-only — it never consumes the plan. It's built for
+  handing a real tree's problems over for bulk analysis.
 - **Themes + an app icon (1.2.0).** Six built-in color
   themes (Midnight default, Daylight, Ocean, Ember, Forest,
   Plum) from the header menu or Settings → Appearance,
@@ -185,7 +200,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.2.0-public.zip` from the
+Get `WellKeptLib-1.3.0-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -287,7 +302,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.2.0 binaries. One disclosed divergence, in a test file
+  1.3.0 binaries. One disclosed divergence, in a test file
   only: the fixture lookup helper additionally accepts this
   repository's fixtures layout, and the fixture generator
   script ships in `fixtures/` — no product code or test
@@ -341,24 +356,26 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.2.0)
+## Verification (what was actually checked for 1.3.0)
 
-- Go test suite: **256 top-level tests, all passing**,
+- Go test suite: **266 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (256 PASS, 0 FAIL);
+  re-run on this published tree (266 PASS, 0 FAIL);
   `go vet` and `gofmt` clean. No pre-existing test
-  expectation changed.
-- Page checks: 158 ids looked up / 183 defined, all resolve;
-  the Node render harness passes **115/115**.
-- Shipped-binary smoke: **61/61** on the base build — the
-  full battery (baseline 11/2/2/6, incident replay 7/7,
-  link mode end-to-end, report/exports, CLI codes) plus the
-  new surface: all six icon paths served as real images at
-  exact dimensions, theme persistence across a restart,
-  unknown theme values falling back silently. The public
-  package's extracted binary passes the same smoke, and the
-  installer walk passes **12/12** (with the honest limit
-  that `systemctl` is shimmed in the sandbox walks).
+  expectation changed; the fixture link plan's behavior is
+  byte-identical to 1.2.0's.
+- Page checks: 160 ids looked up / 185 defined, all resolve;
+  the Node render harness passes **120/120**.
+- Shipped-binary smoke: **72/72** on the base build — the
+  full carried battery (baseline 11/2/2/6, incident replay,
+  link mode, themes, icons, report/exports, CLI codes) plus
+  the export itself, checked field-by-field against the
+  plan it came from; a completeness test exports a synthetic
+  plan with 300 unidentified files and 40 collisions and
+  asserts **every** entry is present. The public package's
+  extracted binary passes the same smoke, and the installer
+  walk passes **12/12** (with the honest limit that
+  `systemctl` is shimmed in the sandbox walks).
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -388,6 +405,10 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   and the tab icon on real machines are pending the
   maintainer's live test, as is the 1.1.1 Windows lock fix
   below.
+- **The problems export is fixture-verified only.** No real
+  library has been planned against yet; the first real-tree
+  export is the live proof, and no field results are claimed
+  here.
 - **The 1.1.1 Windows lock fix is not yet live-proven on
   Windows.** The bug it fixes was confirmed live (a real
   lockout, cleared by hand-deleting the lock file), and the
@@ -429,6 +450,22 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.3.0
+
+- **Export the link plan's problems as JSON.** One new
+  button in Organize → link mode downloads the complete
+  diagnostics document for a plan: collisions with keeper
+  reasoning and per-source facts, target conflicts with the
+  occupant's facts, unidentified files with exact reasons,
+  unlinkable files with causes — healthy files as counts
+  only, disclosed in the document itself. Read-only; the
+  plan stays applicable afterwards. Built for handing a
+  real tree's problems over for analysis.
+- Nothing else changes: planner outcomes are identical to
+  1.2.0 (the export only snapshots more of what the planner
+  already knew), and there are no new settings, files, or
+  persistence surfaces.
 
 ## Release notes — 1.2.0
 

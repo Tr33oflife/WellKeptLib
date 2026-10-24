@@ -695,6 +695,7 @@ try {
       <p class="dim small" style="max-width:840px">A hardlink is another name for the same file, not a copy. The source and target must be on the same filesystem or volume.</p>
       <p class="dim small" style="max-width:840px">Editing the file through either name edits the same shared content. Deleting the original name does not free the file's space while a link remains; the space is freed only when the last name for that file is deleted.</p>
       <p class="dim small" style="max-width:840px">Apply creates folders and links only. It never moves, renames, copies, deletes, or edits an original.</p>
+      <p class="dim small" style="max-width:840px">After a preview, <b>Export problems (JSON)</b> downloads one file listing everything that could not be linked — every collision, unidentified and unlinkable file, with the reasons and the evidence behind each — so naming problems can be diagnosed in bulk.</p>
     </div>
     <div class="toolbar" style="align-items:flex-end">
       <div style="flex:1;min-width:260px">
@@ -2835,13 +2836,47 @@ function renderLinkPlan(resultHTML){
   const n = (p.links_to_create||[]).length;
   h += '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
     '<button class="primary" id="btn-link-apply"' + (n ? "" : " disabled") + ">Build " + n + " links</button>" +
+    '<button id="btn-link-export">Export problems (JSON)</button>' +
     (linkManifestID ? '<button class="danger" id="btn-link-undo-last">Undo this link build</button>' : "") +
     '<span class="small" id="link-apply-result">' + (resultHTML || "") + "</span></div>";
   box.innerHTML = h;
   const applyBtn = $("btn-link-apply");
   if (applyBtn) applyBtn.addEventListener("click", applyLinkPlan);
+  const exportBtn = $("btn-link-export");
+  if (exportBtn) exportBtn.addEventListener("click", exportLinkProblems);
   const undoBtn = $("btn-link-undo-last");
   if (undoBtn) undoBtn.addEventListener("click", () => undoLinkBuild(linkManifestID));
+}
+
+// exportLinkProblems downloads the current link plan's
+// problems as ONE JSON document (v1.3.0): every collision,
+// not-identified and unlinkable entry with the planner's
+// evidence — the file you hand over to get naming misses
+// diagnosed in bulk. The plan lives only in server memory, so
+// a stale id (already applied, or previewed in a past session)
+// comes back as the server's 404 message, shown here — never
+// as a downloaded error page. The healthy entries are counts
+// only in the document; the notes field inside it says why.
+async function exportLinkProblems(){
+  if (!linkPlanData) return;
+  try{
+    const r = await fetch(BASE + "api/organize/links/problems?plan_id=" + encodeURIComponent(linkPlanData.id));
+    if (!r.ok){
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || ("HTTP " + r.status));
+    }
+    const cd = r.headers.get("Content-Disposition") || "";
+    const m = /filename="?([^";]+)"?/.exec(cd);
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : "wellkeptlib-link-problems.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(e){
+    const out = $("link-apply-result");
+    if (out) out.innerHTML = '<span style="color:var(--red)">Export failed: ' + esc(e.message) + "</span>";
+  }
 }
 
 // applyLinkPlan executes the previewed link plan and renders

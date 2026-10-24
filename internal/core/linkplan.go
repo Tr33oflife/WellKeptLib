@@ -71,12 +71,86 @@ type LinkEntry struct {
 	DepSources []string `json:"-"`
 }
 
+// LinkParsedFact is what the release-name parser extracted
+// from one file name (v1.3.0): the parser's own output, carried
+// on outcome records so the diagnostics export can show what
+// WAS found — a zero year, an empty title or an empty episode
+// list means the parser extracted nothing there.
+type LinkParsedFact struct {
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	NormTitle string `json:"norm_title,omitempty"`
+	Year      int    `json:"year"`
+	Season    int    `json:"season"`
+	Episodes  []int  `json:"episodes"`
+	Edition   string `json:"edition,omitempty"`
+	Special   string `json:"special,omitempty"`
+}
+
+// LinkProbeFact is the ranking evidence for one collision
+// source (v1.3.0): the probe/scan facts the duplicate ranking
+// consumed. Where no probe ran for the file (an occupied
+// target's copies, same-physical extras), only the filename
+// resolution label and the size are set — exactly the fallback
+// ranking's inputs. Zero/absent means unknown.
+type LinkProbeFact struct {
+	Resolution string  `json:"resolution,omitempty"`
+	Height     int     `json:"height,omitempty"`
+	HDR        bool    `json:"hdr"`
+	Bitrate    int64   `json:"bitrate,omitempty"`
+	Size       int64   `json:"size"`
+	Duration   float64 `json:"duration_seconds,omitempty"`
+}
+
+func linkParsedFact(pn ParsedName) *LinkParsedFact {
+	eps := pn.Episodes
+	if eps == nil {
+		eps = []int{}
+	}
+	return &LinkParsedFact{
+		Kind: pn.Kind, Title: pn.Title, NormTitle: pn.NormTitle,
+		Year: pn.Year, Season: pn.Season, Episodes: eps,
+		Edition: pn.Edition, Special: pn.Special,
+	}
+}
+
+func linkProbeFactFromItem(it *Item) *LinkProbeFact {
+	if it == nil {
+		return nil
+	}
+	return &LinkProbeFact{
+		Resolution: it.ResolutionLabel, Height: it.Height, HDR: it.HDR,
+		Bitrate: it.Bitrate, Size: it.Size, Duration: it.Duration,
+	}
+}
+
+// linkProbeFactFromFile is the filename-level fact set for a
+// source no ranking probe covered.
+func linkProbeFactFromFile(f orgFile, resolution string) *LinkProbeFact {
+	return &LinkProbeFact{Resolution: resolution, Size: f.Size}
+}
+
 // LinkSkip is one file deliberately not linked, with the reason.
 type LinkSkip struct {
 	Path          string   `json:"path"`
 	Target        string   `json:"target,omitempty"`
 	Reason        string   `json:"reason"`
 	AttachedFiles []string `json:"attached_files,omitempty"`
+	// Diagnostic facts (v1.3.0, additive — populated where the
+	// planner has them, consumed by the link-problems export;
+	// no computed outcome reads them): what the parser
+	// extracted, the ranking evidence, the file's extension
+	// and size, and the device facts the feasibility proof
+	// used.
+	Parsed           *LinkParsedFact `json:"parsed,omitempty"`
+	Probe            *LinkProbeFact  `json:"probe,omitempty"`
+	Ext              string          `json:"ext,omitempty"`
+	Size             int64           `json:"size,omitempty"`
+	SourceDev        uint64          `json:"source_dev,omitempty"`
+	SourceIno        uint64          `json:"source_ino,omitempty"`
+	IdentityKnown    bool            `json:"identity_known,omitempty"`
+	DestinationDev   uint64          `json:"destination_dev,omitempty"`
+	DestinationKnown bool            `json:"destination_known,omitempty"`
 }
 
 // LinkAlternate is one source in a collision group that was not
@@ -86,6 +160,9 @@ type LinkAlternate struct {
 	Reason        string   `json:"reason"`
 	SamePhysical  bool     `json:"same_physical,omitempty"`
 	AttachedFiles []string `json:"attached_files,omitempty"`
+	// Diagnostic facts (v1.3.0, additive — see LinkSkip).
+	Parsed *LinkParsedFact `json:"parsed,omitempty"`
+	Probe  *LinkProbeFact  `json:"probe,omitempty"`
 }
 
 // LinkTargetConflict is one occupied target link mode will
@@ -96,6 +173,14 @@ type LinkTargetConflict struct {
 	Occupant      string   `json:"occupant"` // regular file | directory | symbolic link | other | unknown identity
 	Reason        string   `json:"reason"`
 	AttachedFiles []string `json:"attached_files,omitempty"`
+	// Occupant facts (v1.3.0, additive): the occupying file's
+	// size and storage identity where the planner read them
+	// (regular files), for the diagnostics export.
+	OccupantSize          int64  `json:"occupant_size,omitempty"`
+	OccupantSizeKnown     bool   `json:"occupant_size_known,omitempty"`
+	OccupantDev           uint64 `json:"occupant_dev,omitempty"`
+	OccupantIno           uint64 `json:"occupant_ino,omitempty"`
+	OccupantIdentityKnown bool   `json:"occupant_identity_known,omitempty"`
 }
 
 // LinkPlanWarning is one plan-level warning (scan-root overlap).
@@ -116,6 +201,11 @@ type LinkCollision struct {
 	DurationNote   string          `json:"duration_note,omitempty"`
 	RankingNote    string          `json:"ranking_note,omitempty"`
 	Reason         string          `json:"reason"`
+	// The keeper's diagnostic facts (v1.3.0, additive — see
+	// LinkSkip): what the parser extracted from the keeper's
+	// name and the ranking evidence it won with.
+	KeeperParsed *LinkParsedFact `json:"keeper_parsed,omitempty"`
+	KeeperProbe  *LinkProbeFact  `json:"keeper_probe,omitempty"`
 }
 
 // LinkPlanStats labels its units: files unless the name says
@@ -218,6 +308,10 @@ type targetOccupant struct {
 	dev   uint64
 	ino   uint64
 	known bool // identity readable (regular files only)
+	// size/sizeKnown carry the occupying file's size (regular
+	// files only, v1.3.0) for the diagnostics export.
+	size      int64
+	sizeKnown bool
 }
 
 // inspectTargetOccupant Lstats the target (never follows a
@@ -237,7 +331,7 @@ func inspectTargetOccupant(path string) targetOccupant {
 		return targetOccupant{state: "other"}
 	}
 	dev, ino, _, ok := fileIdentityForFn(info, path)
-	return targetOccupant{state: "regular", dev: dev, ino: ino, known: ok}
+	return targetOccupant{state: "regular", dev: dev, ino: ino, known: ok, size: info.Size(), sizeKnown: true}
 }
 
 // label is the user-facing occupant word for conflicts.
@@ -401,7 +495,10 @@ func planLinkLibrary(sourceRoot, targetRoot string, cfg *Config, resolveRank lin
 			}
 			if reason != "" {
 				vp.Status = "unidentified"
-				plan.NotIdentified = append(plan.NotIdentified, LinkSkip{Path: f.Path, Reason: reason})
+				plan.NotIdentified = append(plan.NotIdentified, LinkSkip{
+					Path: f.Path, Reason: reason,
+					Parsed: linkParsedFact(vp.Parsed), Ext: f.Ext, Size: f.Size,
+				})
 				lv.outKind, lv.outA = "notidentified", len(plan.NotIdentified)-1
 			} else {
 				vp.Target, vp.TargetDir, vp.TargetStem, vp.WorkDir = target, targetDir, targetStem, workDir
@@ -620,6 +717,8 @@ func (b *linkPlanBuilder) addVideoConflict(target string, group []*videoPlan, oc
 	idx := len(plan.TargetConflicts)
 	plan.TargetConflicts = append(plan.TargetConflicts, LinkTargetConflict{
 		Target: target, Sources: sources, Occupant: occupant, Reason: reason,
+		OccupantSize: occ.size, OccupantSizeKnown: occ.sizeKnown,
+		OccupantDev: occ.dev, OccupantIno: occ.ino, OccupantIdentityKnown: occ.known,
 	})
 	for _, vp := range group {
 		vp.Status = "conflict"
@@ -674,6 +773,8 @@ func (b *linkPlanBuilder) resolveOccupiedGroup(target string, group []*videoPlan
 		Target:       target,
 		KeeperSource: linked.File.Path,
 		Reason:       "the target already holds a hardlink to one copy — it is never replaced to upgrade the keeper",
+		KeeperParsed: linkParsedFact(linked.Parsed),
+		KeeperProbe:  linkProbeFactFromFile(linked.File, linked.Parsed.Resolution),
 	}
 	for _, vp := range sortedVideosByPath(group) {
 		if vp == linked {
@@ -685,7 +786,10 @@ func (b *linkPlanBuilder) resolveOccupiedGroup(target string, group []*videoPlan
 		if same {
 			reason = "same physical file as the linked copy — no second link needed"
 		}
-		col.Alternates = append(col.Alternates, LinkAlternate{Source: vp.File.Path, Reason: reason, SamePhysical: same})
+		col.Alternates = append(col.Alternates, LinkAlternate{
+			Source: vp.File.Path, Reason: reason, SamePhysical: same,
+			Parsed: linkParsedFact(vp.Parsed), Probe: linkProbeFactFromFile(vp.File, vp.Parsed.Resolution),
+		})
 		vp.Status = "alternate"
 		lv := b.lv[vp]
 		lv.outKind, lv.outA, lv.outB = "alternate", colIdx, len(col.Alternates)-1
@@ -753,7 +857,7 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 	if len(partKeys) > 1 {
 		b.addUnresolvedCollision(target, group,
 			"different parsed identities or editions land on the same Jellyfin name — v1.1.0 does not invent a distinguishing name, so none of them is linked",
-			"not linked — this collision could not be resolved automatically", "", "")
+			"not linked — this collision could not be resolved automatically", "", "", nil)
 		return
 	}
 	// 2. Split-file guard: parts are segments of one work,
@@ -763,7 +867,7 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 			if vp.Parsed.Special == "split-file" {
 				b.addUnresolvedCollision(target, group,
 					"split-file parts are segments of one work, not copies of each other — none of them is linked",
-					"not linked — split-file part", "", "")
+					"not linked — split-file part", "", "", nil)
 				return
 			}
 		}
@@ -785,11 +889,14 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 				Target:       target,
 				KeeperSource: rep.File.Path,
 				Reason:       "several source paths name the same physical file — only one link is needed",
+				KeeperParsed: linkParsedFact(rep.Parsed),
+				KeeperProbe:  linkProbeFactFromFile(rep.File, rep.Parsed.Resolution),
 			}
 			for _, ex := range extras[rep] {
 				col.Alternates = append(col.Alternates, LinkAlternate{
 					Source: ex.File.Path, SamePhysical: true,
 					Reason: "same physical file as the keeper — no second link needed",
+					Parsed: linkParsedFact(ex.Parsed), Probe: linkProbeFactFromFile(ex.File, ex.Parsed.Resolution),
 				})
 				ex.Status = "alternate"
 				lv := b.lv[ex]
@@ -818,7 +925,7 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 		b.addUnresolvedCollision(target, group,
 			"no keeper was chosen: "+note,
 			"not linked — the duration check could not confirm these copies are the same cut",
-			status, note)
+			status, note, items)
 		return
 	}
 	// 6. Feasibility split: infeasible copies are ineligible,
@@ -854,6 +961,15 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 	keeper.Status = "create"
 	plan.LinksToCreate = append(plan.LinksToCreate, b.makeEntry(keeper, keeperDest.dev))
 
+	// The ranking evidence for one candidate (v1.3.0 facts):
+	// the resolved ranking item when one exists, else the
+	// filename-level inputs.
+	probeFor := func(vp *videoPlan) *LinkProbeFact {
+		if it := items[vp]; it != nil {
+			return linkProbeFactFromItem(it)
+		}
+		return linkProbeFactFromFile(vp.File, vp.Parsed.Resolution)
+	}
 	colIdx := len(plan.Collisions)
 	col := LinkCollision{
 		Target:         target,
@@ -861,9 +977,14 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 		DurationStatus: status,
 		DurationNote:   note,
 		RankingNote:    rankingNote(items[keeper], anyFallback),
+		KeeperParsed:   linkParsedFact(keeper.Parsed),
+		KeeperProbe:    probeFor(keeper),
 	}
-	addAlt := func(vp *videoPlan, reason string, same bool) {
-		col.Alternates = append(col.Alternates, LinkAlternate{Source: vp.File.Path, Reason: reason, SamePhysical: same})
+	addAlt := func(vp *videoPlan, reason string, same bool, probe *LinkProbeFact) {
+		col.Alternates = append(col.Alternates, LinkAlternate{
+			Source: vp.File.Path, Reason: reason, SamePhysical: same,
+			Parsed: linkParsedFact(vp.Parsed), Probe: probe,
+		})
 		vp.Status = "alternate"
 		lv := b.lv[vp]
 		lv.outKind, lv.outA, lv.outB = "alternate", colIdx, len(col.Alternates)-1
@@ -872,25 +993,35 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 		if rep == keeper {
 			continue
 		}
-		addAlt(rep, "another copy of the same work — the keeper above was linked instead", false)
+		addAlt(rep, "another copy of the same work — the keeper above was linked instead", false, probeFor(rep))
 		for _, ex := range extras[rep] {
-			addAlt(ex, "same physical file as an unlinked copy", true)
+			addAlt(ex, "same physical file as an unlinked copy", true, probeFor(rep))
 		}
 	}
 	for _, ex := range extras[keeper] {
-		addAlt(ex, "same physical file as the keeper — no second link needed", true)
+		addAlt(ex, "same physical file as the keeper — no second link needed", true, probeFor(keeper))
 	}
 	for _, rep := range reps {
 		reason, bad := ineligible[rep]
 		if !bad {
 			continue
 		}
-		col.Ineligible = append(col.Ineligible, LinkSkip{Path: rep.File.Path, Target: target, Reason: reason})
+		col.Ineligible = append(col.Ineligible, LinkSkip{
+			Path: rep.File.Path, Target: target, Reason: reason,
+			Parsed: linkParsedFact(rep.Parsed), Probe: linkProbeFactFromItem(items[rep]),
+			Ext: rep.File.Ext, Size: rep.File.Size,
+			SourceDev: rep.File.Dev, SourceIno: rep.File.Ino, IdentityKnown: rep.File.IdentityKnown,
+		})
 		rep.Status = "ineligible"
 		lv := b.lv[rep]
 		lv.outKind, lv.outA, lv.outB = "ineligible", colIdx, len(col.Ineligible)-1
 		for _, ex := range extras[rep] {
-			col.Ineligible = append(col.Ineligible, LinkSkip{Path: ex.File.Path, Target: target, Reason: reason})
+			col.Ineligible = append(col.Ineligible, LinkSkip{
+				Path: ex.File.Path, Target: target, Reason: reason,
+				Parsed: linkParsedFact(ex.Parsed), Probe: linkProbeFactFromItem(items[rep]),
+				Ext: ex.File.Ext, Size: ex.File.Size,
+				SourceDev: ex.File.Dev, SourceIno: ex.File.Ino, IdentityKnown: ex.File.IdentityKnown,
+			})
 			ex.Status = "ineligible"
 			lvx := b.lv[ex]
 			lvx.outKind, lvx.outA, lvx.outB = "ineligible", colIdx, len(col.Ineligible)-1
@@ -901,13 +1032,23 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 
 // addUnresolvedCollision records a collision group with no
 // keeper: every source becomes an alternate with the given
-// per-source reason.
-func (b *linkPlanBuilder) addUnresolvedCollision(target string, group []*videoPlan, reason, altReason, durStatus, durNote string) {
+// per-source reason. items carries the ranking metadata when
+// the caller computed it (the duration-gate path) so the
+// export can show the probe facts behind the refusal; nil
+// falls back to filename-level facts.
+func (b *linkPlanBuilder) addUnresolvedCollision(target string, group []*videoPlan, reason, altReason, durStatus, durNote string, items map[*videoPlan]*Item) {
 	plan := b.plan
 	colIdx := len(plan.Collisions)
 	col := LinkCollision{Target: target, Reason: reason, DurationStatus: durStatus, DurationNote: durNote}
 	for _, vp := range sortedVideosByPath(group) {
-		col.Alternates = append(col.Alternates, LinkAlternate{Source: vp.File.Path, Reason: altReason})
+		probe := linkProbeFactFromFile(vp.File, vp.Parsed.Resolution)
+		if it := items[vp]; it != nil {
+			probe = linkProbeFactFromItem(it)
+		}
+		col.Alternates = append(col.Alternates, LinkAlternate{
+			Source: vp.File.Path, Reason: altReason,
+			Parsed: linkParsedFact(vp.Parsed), Probe: probe,
+		})
 		vp.Status = "alternate"
 		lv := b.lv[vp]
 		lv.outKind, lv.outA, lv.outB = "alternate", colIdx, len(col.Alternates)-1
@@ -919,7 +1060,13 @@ func (b *linkPlanBuilder) addUnresolvedCollision(target string, group []*videoPl
 // its outcome for attachments.
 func (b *linkPlanBuilder) addUnlinkable(vp *videoPlan, target, reason string) {
 	plan := b.plan
-	plan.Unlinkable = append(plan.Unlinkable, LinkSkip{Path: vp.File.Path, Target: target, Reason: reason})
+	di := b.destinationDevice(target)
+	plan.Unlinkable = append(plan.Unlinkable, LinkSkip{
+		Path: vp.File.Path, Target: target, Reason: reason,
+		Parsed: linkParsedFact(vp.Parsed), Ext: vp.File.Ext, Size: vp.File.Size,
+		SourceDev: vp.File.Dev, SourceIno: vp.File.Ino, IdentityKnown: vp.File.IdentityKnown,
+		DestinationDev: di.dev, DestinationKnown: di.known,
+	})
 	vp.Status = "unlinkable"
 	lv := b.lv[vp]
 	lv.outKind, lv.outA = "unlinkable", len(plan.Unlinkable)-1
@@ -1095,6 +1242,7 @@ func (b *linkPlanBuilder) classifyCandidates(cands []*linkCandidate) {
 				Alternates: []LinkAlternate{{
 					Source: c.file.Path,
 					Reason: "not linked — a video target (" + src + ") takes this name",
+					Probe:  linkProbeFactFromFile(c.file, ""),
 				}},
 			})
 			continue
@@ -1140,6 +1288,7 @@ func (b *linkPlanBuilder) classifyCandidateGroup(group []*linkCandidate) {
 		for _, c := range sorted {
 			col.Alternates = append(col.Alternates, LinkAlternate{
 				Source: c.file.Path, Reason: "not linked — the target is shared with another file",
+				Probe: linkProbeFactFromFile(c.file, ""),
 			})
 		}
 		plan.Collisions = append(plan.Collisions, col)
@@ -1201,9 +1350,13 @@ func (b *linkPlanBuilder) addSamePhysicalAlternates(rep *linkCandidate, ex []*li
 		Target:       rep.target,
 		KeeperSource: rep.file.Path,
 		Reason:       "several source paths name the same physical file — only one link is needed",
+		KeeperProbe:  linkProbeFactFromFile(rep.file, ""),
 	}
 	for _, c := range ex {
-		col.Alternates = append(col.Alternates, LinkAlternate{Source: c.file.Path, Reason: reason, SamePhysical: true})
+		col.Alternates = append(col.Alternates, LinkAlternate{
+			Source: c.file.Path, Reason: reason, SamePhysical: true,
+			Probe: linkProbeFactFromFile(c.file, ""),
+		})
 	}
 	b.plan.Collisions = append(b.plan.Collisions, col)
 }
@@ -1226,6 +1379,8 @@ func (b *linkPlanBuilder) addCandidateConflict(rep *linkCandidate, ex []*linkCan
 	}
 	plan.TargetConflicts = append(plan.TargetConflicts, LinkTargetConflict{
 		Target: rep.target, Sources: sources, Occupant: occupant, Reason: reason,
+		OccupantSize: occ.size, OccupantSizeKnown: occ.sizeKnown,
+		OccupantDev: occ.dev, OccupantIno: occ.ino, OccupantIdentityKnown: occ.known,
 	})
 }
 
@@ -1233,9 +1388,18 @@ func (b *linkPlanBuilder) addCandidateConflict(rep *linkCandidate, ex []*linkCan
 // its same-physical extras as unlinkable.
 func (b *linkPlanBuilder) addCandidateUnlinkable(rep *linkCandidate, ex []*linkCandidate, target, reason string) {
 	plan := b.plan
-	plan.Unlinkable = append(plan.Unlinkable, LinkSkip{Path: rep.file.Path, Target: target, Reason: reason})
+	di := b.destinationDevice(target)
+	skipFor := func(f orgFile) LinkSkip {
+		return LinkSkip{
+			Path: f.Path, Target: target, Reason: reason,
+			Ext: f.Ext, Size: f.Size,
+			SourceDev: f.Dev, SourceIno: f.Ino, IdentityKnown: f.IdentityKnown,
+			DestinationDev: di.dev, DestinationKnown: di.known,
+		}
+	}
+	plan.Unlinkable = append(plan.Unlinkable, skipFor(rep.file))
 	for _, c := range ex {
-		plan.Unlinkable = append(plan.Unlinkable, LinkSkip{Path: c.file.Path, Target: target, Reason: reason})
+		plan.Unlinkable = append(plan.Unlinkable, skipFor(c.file))
 	}
 }
 

@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.2.0)
+# Install — Ultra.cc (WellKeptLib v1.3.0)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,18 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.0:** the link plan can now export its
+problems. After previewing a link plan in the Organize tab's
+**Build link library** mode, the new **Export problems
+(JSON)** button (next to the Build button) downloads one
+JSON file listing everything that could not be linked -
+every collision with the keeper decision and the evidence
+behind it, every file the app could not identify with the
+reason and what it did manage to read from the name, and
+every unlinkable file with the filesystem facts - so naming
+problems can be diagnosed in bulk instead of one row at a
+time. Nothing else changes.
 
 **New in v1.2.0:** pick your colors. A theme selector in
 the page header (and a swatch picker under Settings -

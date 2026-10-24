@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.2.0)
+# Install — Windows (WellKeptLib v1.3.0)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.2.0-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.3.0-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,23 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.3.0
+
+- **Export the link plan's problems (JSON).** In the
+  Organize tab's **Build link library** mode, a preview now
+  has an **Export problems (JSON)** button next to the Build
+  button. It downloads one JSON file describing everything
+  that could not be linked: every collision (which copy was
+  picked as keeper, why, and the evidence), every file the
+  app could not identify (the exact reason, plus what it did
+  manage to read from the name), every unlinkable file (with
+  the target it would have taken and the filesystem facts),
+  and every occupied target (what is sitting there and how
+  big it is). Hand the file to whoever is helping you
+  diagnose naming misses - it is the whole problem list, not
+  a sample. Healthy and skipped files are in it as counts
+  only.
 
 ## What's new in v1.2.0
 

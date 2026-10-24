@@ -97,6 +97,10 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	mux.HandleFunc("POST /api/organize/links/apply", s.handleLinkApply)
 	mux.HandleFunc("POST /api/organize/links/undo", s.handleLinkUndo)
 	mux.HandleFunc("GET /api/organize/links/manifests", s.handleLinkManifests)
+	// v1.3.0 — the link plan's problems as ONE downloadable
+	// JSON document (every conflict, not-identified and
+	// unlinkable entry with the planner's evidence).
+	mux.HandleFunc("GET /api/organize/links/problems", s.handleLinkProblems)
 	// v0.9.0 — gaps, coverage, and the subtitle wizard (W1–W3):
 	// the Step 0 overview, the dismissal store, and the external
 	// fixes (relabel via manifest + guarded delete). No
@@ -634,6 +638,26 @@ func (s *server) handleLinkUndo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleLinkProblems -> Service.LinkPlanDiagnostics (v1.3.0):
+// the current link plan's problems as a JSON download. Plans
+// live only in memory, so a stale or unknown plan id is a 404
+// with the honest error — never a downloaded error page.
+func (s *server) handleLinkProblems(w http.ResponseWriter, r *http.Request) {
+	doc, filename, err := s.svc.LinkPlanDiagnostics(r.URL.Query().Get("plan_id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, err)
+		return
+	}
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	_, _ = w.Write(append(b, '\n'))
 }
 
 // handleLinkManifests -> Service.LinkManifests (v1.1.0).
