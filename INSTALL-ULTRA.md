@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.2)
+# Install — Ultra.cc (WellKeptLib v1.3.3)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,17 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.3:** a file the app measures as 0 bytes
+still gets its hardlink. When a link build is applied, the
+app re-checks each file against the preview; a size
+recorded as 0 at preview time used to count as "changed"
+if the file measured at its real size later, and that one
+entry's link was skipped. A recorded 0 now means "size
+unknown" — the link is made, while the app still verifies
+it is the same file (same identity and modification time)
+before linking. Files with a real recorded size keep the
+exact check.
 
 **New in v1.3.2:** a Ko-fi Donate button that appears when
 the app is online and silently stays away when it isn't.

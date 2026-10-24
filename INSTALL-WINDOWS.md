@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.3.2)
+# Install — Windows (WellKeptLib v1.3.3)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.3.2-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.3.3-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,18 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.3.3
+
+- **A file measured as 0 bytes still gets its hardlink.**
+  When a link build is applied, the app re-checks each file
+  against the preview. A size recorded as 0 at preview time
+  used to count as "changed" if the file measured at its
+  real size later, and that one entry's link was skipped. A
+  recorded 0 now means "size unknown" — the link is made,
+  while the app still verifies it is the same file (same
+  identity and modification time) before linking. Files
+  with a real recorded size keep the exact check.
 
 ## What's new in v1.3.2
 

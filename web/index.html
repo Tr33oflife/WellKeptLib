@@ -248,7 +248,7 @@ try {
   input::placeholder,textarea::placeholder{color:var(--faint)}
   input:focus,textarea:focus,select:focus{outline:none;border-color:var(--amber);box-shadow:var(--ring)}
   label{display:block;font-size:11.5px;color:var(--dim);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.7px;font-weight:600}
-  .wrap{max-width:1320px;margin:0 auto;padding:18px 20px 60px}
+  .wrap{max-width:1320px;margin:0 auto;padding:18px 20px 120px} /* v1.3.3: bottom padding clears the floating Ko-fi button (65px tall, 16px from the bottom) so the last content in a tab is never under it */
   /* Header / scan bar (always visible): sticky + backdrop blur on wide
      screens, resting glow in place of a scroll-state detector. */
   header{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);
@@ -379,6 +379,9 @@ try {
   #dup-batchbar{position:sticky;bottom:10px;z-index:5;gap:10px;align-items:center;flex-wrap:wrap;
                 border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--panel2);
                 box-shadow:var(--shadow-md);margin-top:12px}
+  /* v1.3.3: when the Ko-fi button is drawn, lift the bottom elements above it (button top edge 81px from viewport bottom) */
+  body.kofi-on #dup-batchbar{bottom:92px}
+  body.kofi-on #backnav-toast{bottom:102px}
   #dup-batch-info{flex:1;min-width:160px}
   /* backnav hint toast (v0.6.1): the "press back again to exit"
      prompt shown by the backnav snippet near the end of the Tabs
@@ -407,7 +410,7 @@ try {
   /* Narrow screens: header un-sticks, everything stacks, no page-level
      horizontal scroll (tables keep scrolling inside their containers). */
   @media (max-width:900px){
-    .wrap{padding:14px 12px 48px}
+    .wrap{padding:14px 12px 120px} /* v1.3.3: same Ko-fi clearance as desktop */
     h1{font-size:19px}
     nav.tabs{width:100%}
     .scanbar .grow{min-width:min(240px,100%)}
@@ -3260,6 +3263,7 @@ function initKofi(username, enabled){
           "floating-chat.donateButton.background-color": "#323842",
           "floating-chat.donateButton.text-color": "#fff"
         });
+        document.body.classList.add("kofi-on");
       }
       /* No overlay after a successful load (CDN served
          something unexpected) is treated like a load failure:

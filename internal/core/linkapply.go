@@ -486,7 +486,18 @@ func revalidateLinkEntry(plan *LinkPlan, e LinkEntry) *LinkOutcome {
 	if !ok || dev != e.SourceDev || ino != e.SourceIno {
 		return out("source-changed", "the source changed since the preview — preview again")
 	}
-	if info.Size() != e.SourceSize || info.ModTime().UnixNano() != e.SourceMtimeUnix {
+	// A recorded size of 0 is "unknown", not a measurement
+	// (v1.3.3): on a filesystem that reports sizes lazily the
+	// preview can record 0 for a file a later stat reports at
+	// its real size, and the owner's rule is that such a file
+	// still gets its hardlink — so a size difference alone
+	// never refuses a recorded-0 entry. Identity (checked
+	// above) and mtime (checked here) still guard the entry
+	// exactly, and a recorded size > 0 keeps the exact check.
+	if e.SourceSize > 0 && info.Size() != e.SourceSize {
+		return out("source-changed", "the source changed since the preview — preview again")
+	}
+	if info.ModTime().UnixNano() != e.SourceMtimeUnix {
 		return out("source-changed", "the source changed since the preview — preview again")
 	}
 	occ := inspectTargetOccupant(e.Target)

@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.3.2
+- **Version:** 1.3.3
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -20,7 +20,8 @@ double-click `.exe` on Windows.
 ## Screenshots
 
 Taken from a running 1.2.0 instance (the UI is unchanged in
-1.3.2 apart from the Settings Support card added in 1.3.2;
+1.3.3 apart from extra bottom clearance when the Ko-fi
+button is drawn; 1.3.2 added the Settings Support card;
 1.3.0 added one button) over a small synthetic
 demo library (the same generated fixture library the tests
 use — no real collection is shown). All shots use the
@@ -201,7 +202,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.3.2-public.zip` from the
+Get `WellKeptLib-1.3.3-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -303,8 +304,8 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.3.2 binaries. Three disclosed divergences, in test files
-  and one default only: the fixture lookup helper
+  1.3.3 binaries. Four disclosed divergences — in test files,
+  one default, and one UI clearance fix: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
   the bulk parser regression in `bulk_export_131_test.go`
@@ -317,8 +318,13 @@ to the internet.
   (2026-10-23), as a scoped exception to the scrub rule
   for this one default value only: donations from public
   users therefore go to the maintainer, and the button
-  works out of the box. The UI placeholder stays generic.
-  No other product code or test assertion differs from
+  works out of the box. The UI placeholder stays generic;
+  and the Ko-fi clearance fix in `web/index.html` (extra
+  bottom padding plus lifting the Duplicates batch bar and
+  the back-navigation toast while the floating button is
+  drawn, so it can never cover content) originates in this
+  public edition. No other product code or test assertion
+  differs from
   the development tree, and every other scrub item still
   applies in full. The public
   edition was produced from a
@@ -370,33 +376,46 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.3.2)
+## Verification (what was actually checked for 1.3.3)
 
-- Go test suite: **278 top-level tests, all passing**,
+- Go test suite: **282 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (278 PASS, 0 FAIL);
+  re-run on this published tree (282 PASS, 0 FAIL);
   `go vet` and `gofmt` clean. No pre-existing test
-  expectation changed (273 carried + 5 new Ko-fi tests).
+  expectation changed (278 carried + 4 new zero-size
+  link tests; the central one fails on the 1.3.2 base).
 - Page checks: 162 ids looked up / 187 defined, all resolve;
   the Node render harness passes **128/128** online (stub
   CDN seam), with offline / blank / disabled scenarios
   green as well.
-- Shipped-binary smoke: **87/87** on the base build — the
-  full carried battery (baseline 11/2/2/6, incident replay,
-  link mode, themes, icons, report/exports, CLI codes, the
-  1.3.0 export, the 1.3.1 keeper-evidence checks) plus 12
-  new Ko-fi checks over HTTP (fresh-dir handle default —
-  carried in this public edition by owner exception,
-  toggle default ON,
-  username round-trip, save-without-key keeps the handle,
-  persistence across restart, blank handling, tuning-
-  reset survival, invalid-handle save failure, toggle OFF
-  persistence, save-without-either-key keeps both, served
-  page carries the field + toggle + loader with no static
-  Ko-fi script tag). The public package's extracted binary
-  passes the same smoke, and the installer walk passes
-  **12/12** (with the honest limit that `systemctl` is
-  shimmed in the sandbox walks).
+- Shipped-binary smoke: **91/91** — the full carried
+  battery (baseline 11/2/2/6, incident replay, link mode,
+  themes, icons, report/exports, CLI codes, the 1.3.0
+  export, the 1.3.1 keeper-evidence checks, the 1.3.2
+  Ko-fi checks) plus 4 new 1.3.3 checks over HTTP: the
+  plan selects a 0-byte episode and records its size as
+  0, the file then grows with identity and recorded
+  mtime restored, and Apply still creates the link with
+  target identity equal to the source's. The public
+  package's extracted binary passes the same smoke, and
+  the installer walk passes **12/12** (with the honest
+  limit that `systemctl` is shimmed in the sandbox
+  walks).
+- Standalone clone proof: a clean copy of this tree,
+  with fixtures generated by the shipped
+  `fixtures/generate.sh`, passes `go test ./...` —
+  **281 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
+  which needs the unshipped real-export corpus; see the
+  transparency note).
+- **Ko-fi clearance, measured:** with the widget's real
+  CSS and script served locally (the build VM cannot
+  reach the CDN from a browser), the floating button
+  measures 180×65 px at 16 px from the bottom-left,
+  top edge 81 px from the viewport bottom. After the
+  fix, all 8 tabs at max scroll show **zero overlaps**
+  at 1280 px and 360 px viewports, and the Duplicates
+  batch bar sits at bottom: 92 px while the button is
+  drawn.
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -411,9 +430,13 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   deliberately so the default theme stays pixel-identical;
   Daylight passes at 5.04 : 1.
 - Scrub gate over the extracted release ZIP (tree + binary
-  strings): **zero hits** on the full denylist (personal
-  names, usernames, hostnames, domains, private connection
-  details, and cross-references to other private projects).
+  strings): **exactly one hit, allowlisted** — the
+  carried Ko-fi username default (see the transparency
+  note above), present in `internal/core/config.go` and
+  in the three binaries. Everything else on the full
+  denylist (personal names, usernames, hostnames,
+  domains, private connection details, and
+  cross-references to other private projects) is zero.
 - ARM64: the binary is built and file-type verified, but it
   has **not** been run on real ARM hardware by us — reports
   welcome.
@@ -428,13 +451,22 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   below.
 - **The Ko-fi button is not yet live-proven in a
   browser.** The loader URL was fetch-checked (HTTP 200,
-  genuine overlay script), and the page wiring is proven
-  with a stub CDN in the render harness — but a real
-  browser load of the floating button is pending the
+  genuine overlay script), the page wiring is proven
+  with a stub CDN in the render harness, and the
+  button's size and position were measured from its real
+  assets in headless Chrome (the 1.3.3 clearance fix is
+  built on those measurements) — but a real browser load
+  of the floating button is pending the
   maintainer's own browser test. The public default is
   the maintainer's handle by owner exception, so the
   button works out of the box; blanking the field still
   disables it entirely.
+- **The 1.3.3 zero-size link fix is fixture-proven.** The
+  four new tests and the shipped-binary smoke cover the
+  recorded-0 cases end to end (plan → apply → undo), and
+  the key test fails on 1.3.2 as expected. The live
+  proof — applying a link build on a real tree whose
+  files report size 0 — is the maintainer's.
 - **The problems export has now seen a real tree — and
   1.3.1 is the result.** The first real link-problems
   export surfaced both defects fixed here. Honest boundary:
@@ -485,6 +517,44 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.3.3
+
+- **A file measured as 0 bytes still gets its hardlink.**
+  Link plans never had a size gate, but applying one did:
+  each entry is re-checked against the preview, and a size
+  recorded as 0 counted as "changed" if the file measured
+  at its real size at apply time, so that entry's link was
+  skipped as source-changed. On some servers, whole packs
+  report size 0 to every stat the app makes (while device
+  and inode from the same stat read fine) — exactly the
+  files this blocked. A recorded 0 now means "size
+  unknown": a size difference alone never refuses the
+  link, while identity (device + inode) and modification
+  time still guard exactly, and files with a real recorded
+  size keep the exact size check. Link manifests written
+  by older versions get the same treatment. Proven by four
+  new tests — including one that fails on 1.3.2 — and by
+  the shipped-binary smoke. Live proof (applying a link
+  build on a tree that reports size 0) is still the
+  maintainer's.
+- **The Ko-fi button can no longer cover content.** The
+  floating button is 180×65 px, fixed 16 px from the
+  bottom-left (its position is set by the widget, not
+  configurable). The page's bottom padding is now 120 px
+  on desktop and narrow screens alike, and while the
+  button is actually drawn — only then — the Duplicates
+  batch bar and the back-navigation toast lift above it.
+  Offline, disabled, or blank-username pages get no layout
+  shift at all. Measured with the widget's real assets in
+  headless Chrome: zero overlaps across all 8 tabs at max
+  scroll, desktop and narrow viewports. This clearance
+  fix originates in the public edition (see the
+  transparency note above).
+- Carries everything from 1.3.2 and 1.3.1 (1.3.1 was
+  never released separately on the public line). Nothing
+  else changes: no plan, ranking, export, or manifest
+  changes.
 
 ## Release notes — 1.3.2
 
