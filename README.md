@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.3.0
+- **Version:** 1.3.1
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -20,7 +20,7 @@ double-click `.exe` on Windows.
 ## Screenshots
 
 Taken from a running 1.2.0 instance (the UI is unchanged in
-1.3.0 apart from one added button) over a small synthetic
+1.3.1; 1.3.0 added one button) over a small synthetic
 demo library (the same generated fixture library the tests
 use — no real collection is shown). All shots use the
 default Midnight theme except the last, which shows
@@ -200,7 +200,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.3.0-public.zip` from the
+Get `WellKeptLib-1.3.1-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -302,10 +302,15 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.3.0 binaries. One disclosed divergence, in a test file
+  1.3.1 binaries. Two disclosed divergences, in test files
   only: the fixture lookup helper additionally accepts this
   repository's fixtures layout, and the fixture generator
-  script ships in `fixtures/` — no product code or test
+  script ships in `fixtures/`; and the bulk parser regression
+  in `bulk_export_131_test.go` skips in a standalone clone
+  (its corpus is a real export, not shipped here) and runs
+  in full where the verification copies exist — the two
+  fractional-misfire victims it covers are also pinned
+  verbatim in `parser_131_test.go`. No product code or test
   assertion differs from the development tree. The public
   edition was produced from a
   private codebase by a scripted scrub gate: a denylist
@@ -356,26 +361,26 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.3.0)
+## Verification (what was actually checked for 1.3.1)
 
-- Go test suite: **266 top-level tests, all passing**,
+- Go test suite: **273 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (266 PASS, 0 FAIL);
+  re-run on this published tree (273 PASS, 0 FAIL);
   `go vet` and `gofmt` clean. No pre-existing test
-  expectation changed; the fixture link plan's behavior is
-  byte-identical to 1.2.0's.
+  expectation changed (266 carried + 7 new); the fixture
+  link plan's behavior is byte-identical to 1.3.0's.
 - Page checks: 160 ids looked up / 185 defined, all resolve;
   the Node render harness passes **120/120**.
-- Shipped-binary smoke: **72/72** on the base build — the
+- Shipped-binary smoke: **75/75** on the base build — the
   full carried battery (baseline 11/2/2/6, incident replay,
-  link mode, themes, icons, report/exports, CLI codes) plus
-  the export itself, checked field-by-field against the
-  plan it came from; a completeness test exports a synthetic
-  plan with 300 unidentified files and 40 collisions and
-  asserts **every** entry is present. The public package's
-  extracted binary passes the same smoke, and the installer
-  walk passes **12/12** (with the honest limit that
-  `systemctl` is shimmed in the sandbox walks).
+  link mode, themes, icons, report/exports, CLI codes, the
+  1.3.0 export checked field-by-field) plus 3 new 1.3.1
+  checks over HTTP (unprobed same-label copies collide on
+  one target; the larger copy is keeper; the keeper reason
+  cites real bytes, no bare "0 bytes"). The public
+  package's extracted binary passes the same smoke, and
+  the installer walk passes **12/12** (with the honest
+  limit that `systemctl` is shimmed in the sandbox walks).
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -405,10 +410,15 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   and the tab icon on real machines are pending the
   maintainer's live test, as is the 1.1.1 Windows lock fix
   below.
-- **The problems export is fixture-verified only.** No real
-  library has been planned against yet; the first real-tree
-  export is the live proof, and no field results are claimed
-  here.
+- **The problems export has now seen a real tree — and
+  1.3.1 is the result.** The first real link-problems
+  export surfaced both defects fixed here. Honest boundary:
+  the exact walk-stat-zero mechanism on that tree was not
+  reproduced locally; the fix guarantees ranking never
+  consumes a zero any in-process source can replace, and
+  the maintainer's re-run with a corrected destination is
+  the live proof — the next export should show real sizes
+  and probe facts on the affected groups.
 - **The 1.1.1 Windows lock fix is not yet live-proven on
   Windows.** The bug it fixes was confirmed live (a real
   lockout, cleared by hand-deleting the lock file), and the
@@ -450,6 +460,36 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.3.1
+
+- **Link-plan keeper picks now use real evidence.** A
+  collision whose copies had never been probe-scanned could
+  be ranked on empty facts — the export literally said
+  "0 bytes" — and fall to path order. The ranking now
+  takes a probe size where one exists, fills a zero size
+  from the walk stat, retries a still-zero size with a
+  fresh stat at decision time, and no longer lets a
+  scan record carrying no ranking facts at all
+  short-circuit the resolver: it falls through to a live
+  probe. The pick order itself is unchanged
+  (resolution → HDR → bitrate → size, path-order
+  tiebreak).
+- **Fractional episodes narrowed.** A decimal now counts
+  as a half-episode only when it is attached directly to
+  the episode token (S22E21.5). Titles that merely start
+  with digits or contain a decimal — "500 Keys"
+  (Simpsons S22E21), "Level 5.5" (One Piece absolute
+  438) — no longer wipe the episode number. Genuine
+  half-episodes still work as before.
+- Bulk regression: the fixed parser was run over every
+  basename in the first real export (843 basenames); the
+  two victims above flipped to their corrected
+  identities and there were **0 unexplained deltas** —
+  that check now lives in the suite and fails on any
+  future delta outside the two victims.
+- Nothing else changes: no UI changes, no new settings,
+  files, or persistence surfaces.
 
 ## Release notes — 1.3.0
 

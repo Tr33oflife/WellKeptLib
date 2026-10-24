@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.3.0)
+# Install — Windows (WellKeptLib v1.3.1)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.3.0-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.3.1-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,20 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.3.1
+
+- **Link-plan keeper picks now use real file sizes.** If
+  you ran a link plan on a library the app had never
+  probe-scanned, collision keepers could be picked with no
+  evidence at all (the export literally said "0 bytes").
+  The ranking now always has a real size, a live probe, or
+  both behind a keeper pick. The pick order is unchanged.
+- **Episodes with number-leading titles are identified
+  again.** "500 Keys" (Simpsons S22E21) and similar titles
+  were dropped as "fractional" episodes; they now parse to
+  their real episode numbers. Genuine half-episodes
+  ("S01E12.5") still work as before.
 
 ## What's new in v1.3.0
 

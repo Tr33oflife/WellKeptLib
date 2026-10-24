@@ -151,8 +151,19 @@ func (s *Service) linkRankResolver(items []*Item, cfg *Config) linkRankResolver 
 	}
 	return func(source string, parsed ParsedName, size int64, modTimeUnixNano int64) *Item {
 		if it, ok := byPath[cleanAbs(source)]; ok && it.Size == size && it.ModTimeUnix == modTimeUnixNano/1e9 {
-			cp := *it
-			return &cp
+			// v1.3.1: a matched scan item that carries NO ranking
+			// facts at all (size 0, no height, no bitrate, no
+			// duration — the shape the v1.3.0 real-tree export
+			// showed for whole packs) does NOT short-circuit:
+			// it would make the keeper fall to path order.
+			// Fall through to a live probe instead, so the
+			// ranking gets real resolution/bitrate to compare.
+			// A probe failure still returns nil below, which
+			// is today's filename/size fallback.
+			if it.Size != 0 || it.Height != 0 || it.Bitrate != 0 || it.Duration != 0 {
+				cp := *it
+				return &cp
+			}
 		}
 		pr := probeFile(context.Background(), cfg.FFprobePath, source, cfg.ProbeTimeoutSec)
 		if pr == nil || !pr.OK {

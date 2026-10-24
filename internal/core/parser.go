@@ -140,6 +140,44 @@ var (
 	reNxNTail  = regexp.MustCompile(`(?i)^-?(\d{1,2})x(\d{1,3})\b`)
 )
 
+// fractionalIsEpisodeClaim reports whether a "N.5" match in the stem
+// is the stem's episode claim (a recap/half-episode marker) rather
+// than title text. v1.3.1: the decimal is an episode claim only
+// when nothing else in the stem claims an episode — an explicit
+// E/SP/Episode/EP token, or a strong (leading-zero 4-digit)
+// absolute number. "Show - 12.5" has no other claim, so it stays
+// fractional; "One Piece - 0438 - … Level 5.5" has the strong
+// claim 0438, so the "5.5" is title text and the cascade keeps
+// episode 438. (The SxE branch does not use this helper: there
+// the decimal must attach directly to the episode token, which
+// the ".5"-plus-non-digit test at the SxE site enforces.)
+func fractionalIsEpisodeClaim(stem string) bool {
+	if !reFractional.MatchString(stem) {
+		return false
+	}
+	split := func(s string) []string {
+		return strings.Fields(strings.NewReplacer(".", " ", "_", " ", "-", " ").Replace(s))
+	}
+	for _, tok := range split(stem) {
+		if reEpOnly.FindStringSubmatch(tok) != nil {
+			return false
+		}
+	}
+	if reSP.FindStringSubmatch(stem) != nil || reEpWord.FindStringSubmatch(stem) != nil || reEpAbbr.FindStringSubmatch(stem) != nil {
+		return false
+	}
+	// Strong absolute tokens in the bracket/paren-stripped view
+	// (the same view the bare-number cascades search).
+	for _, tok := range split(reParen.ReplaceAllString(reBrack.ReplaceAllString(stem, " "), " ")) {
+		if digits, ok := bareNumberParts(tok); ok {
+			if _, strong := strongEpisodeNumber(digits); strong {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // tagTokens are filename tokens that are release metadata, not title.
 var tagTokens = map[string]bool{
 	"1080p": true, "720p": true, "2160p": true, "480p": true, "576p": true, "360p": true,
@@ -645,11 +683,15 @@ func parseName(path, root string) ParsedName {
 		p.Season, _ = strconv.Atoi(work[loc[2]:loc[3]])
 		ep, _ := strconv.Atoi(work[loc[4]:loc[5]])
 		p.Episodes = []int{ep}
-		// Fractional (v0.3.5): episode digits immediately followed
-		// by ".5" ("S01E12.5") — a recap/half episode. Flag-only:
-		// NO episode number is recorded, so it can never merge
-		// into episode 12 or group with it.
-		if strings.HasPrefix(work[loc[5]:], ".5") {
+		// Fractional (v0.3.5, narrowed v1.3.1): episode digits
+		// immediately followed by ".5" AND a non-digit (or the
+		// end of the stem) — "S01E12.5" is a recap/half
+		// episode. Flag-only: NO episode number is recorded,
+		// so it can never merge into episode 12 or group with
+		// it. "S22E21.500.Keys" is NOT fractional: the ".5"
+		// there opens the title token "500", so episode 21
+		// stands and the title is "500 Keys".
+		if rest := work[loc[5]:]; strings.HasPrefix(rest, ".5") && (len(rest) == 2 || rest[2] < '0' || rest[2] > '9') {
 			p.Episodes = nil
 			p.Special = "fractional"
 		} else if tail := work[loc[6]:loc[7]]; tail != "" {
@@ -782,12 +824,16 @@ func parseName(path, root string) ParsedName {
 		// a tokenless file stays unidentified, as before.
 		p.Kind = "episode"
 		p.Season = folderSeason
-		if reFractional.MatchString(work) {
+		if fractionalIsEpisodeClaim(work) {
 			// Fractional in folder context ("Show - 12.5"):
 			// flag-only, no episode number (see reFractional).
 			// Checked BEFORE the cascade: the tokenizer would
 			// otherwise split "12.5" into "12" and hand episode
-			// 12 to the bare-number rule.
+			// 12 to the bare-number rule. v1.3.1: only when
+			// the decimal IS the episode claim — a stem with
+			// a stronger claim ("One Piece - 0438 - …
+			// Level 5.5") falls through to the cascade, which
+			// keeps episode 438.
 			p.Special = "fractional"
 		} else {
 			// The tokenizer also splits on "-" (v0.3.5): glued
@@ -1315,12 +1361,14 @@ func bracketedEpisode(stem string, split func(string) []string) (title string, e
 //
 // A fractional stem is refused up front: "Series - 12.5" is a
 // recap marker, and the tokenizer would split it into "12"
-// and "5" and invent episode 5.
+// and "5" and invent episode 5. v1.3.1: only when the decimal
+// IS the episode claim (see fractionalIsEpisodeClaim) — a
+// stem with a stronger claim keeps its episode number.
 func seriesFolderAbsolute(stem string, dirParts []string) (title string, ep int, ok bool) {
 	if len(dirParts) == 0 {
 		return "", 0, false
 	}
-	if reFractional.MatchString(stem) {
+	if fractionalIsEpisodeClaim(stem) {
 		return "", 0, false
 	}
 	split := func(s string) []string {

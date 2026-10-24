@@ -1082,8 +1082,14 @@ func (b *linkPlanBuilder) addUnlinkableGroup(group []*videoPlan, target, reason 
 
 // rankingItem resolves the ranking Item for one collision
 // representative (SPEC §8.3): resolver metadata when available,
-// filename/size fallback otherwise. Parsed identity fields and
-// the walk-observed size always win; the resolution label falls
+// filename/size fallback otherwise. Parsed identity fields
+// always win; the size merges probe-first (v1.3.1): a probe or
+// scan size already on the item stands, the walk-observed size
+// fills a zero size, and a still-zero size gets one fresh stat
+// at decision time — the v1.3.0 real-tree export showed whole
+// packs ranking on 0 bytes because the walk stat itself came
+// back zero, so the ranking must never consume a zero it can
+// still replace with a real number. The resolution label falls
 // back to the parsed filename label when no probed height
 // exists.
 func (b *linkPlanBuilder) rankingItem(vp *videoPlan) (*Item, bool) {
@@ -1096,18 +1102,37 @@ func (b *linkPlanBuilder) rankingItem(vp *videoPlan) (*Item, bool) {
 			Path: vp.File.Path, Name: vp.File.Name, Kind: vp.Parsed.Kind,
 			Title: vp.Parsed.Title, NormTitle: vp.Parsed.NormTitle, Year: vp.Parsed.Year,
 			Season: vp.Parsed.Season, Episodes: vp.Parsed.Episodes, Edition: vp.Parsed.Edition,
-			ResolutionLabel: vp.Parsed.Resolution, Size: vp.File.Size,
+			ResolutionLabel: vp.Parsed.Resolution, Size: rankingSize(vp),
 		}, true
 	}
 	cp := *it
 	cp.Path, cp.Name = vp.File.Path, vp.File.Name
 	cp.Kind, cp.Title, cp.NormTitle = vp.Parsed.Kind, vp.Parsed.Title, vp.Parsed.NormTitle
 	cp.Year, cp.Season, cp.Episodes, cp.Edition = vp.Parsed.Year, vp.Parsed.Season, vp.Parsed.Episodes, vp.Parsed.Edition
-	cp.Size = vp.File.Size
+	if cp.Size == 0 {
+		cp.Size = rankingSize(vp)
+	}
 	if cp.Height == 0 {
 		cp.ResolutionLabel = vp.Parsed.Resolution
 	}
 	return &cp, false
+}
+
+// rankingSize is the size a collision ranking may consume for
+// one source: the walk-observed size when it is real, else one
+// fresh stat of the file itself (a walk stat can come back zero
+// for a file the filesystem has not yet materialized — the
+// v1.3.0 export's 0-byte keepers — and the stat at decision
+// time is the same truth source retried). A genuinely empty or
+// unstattable file keeps 0, which is its true size.
+func rankingSize(vp *videoPlan) int64 {
+	if vp.File.Size > 0 {
+		return vp.File.Size
+	}
+	if info, err := os.Stat(vp.File.Path); err == nil && info.Size() > 0 {
+		return info.Size()
+	}
+	return vp.File.Size
 }
 
 // rankingNote describes how the keeper won, in the comparator's

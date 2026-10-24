@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.0)
+# Install — Ultra.cc (WellKeptLib v1.3.1)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,14 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.1:** two fixes from the first real
+link-problems export. Link-plan keeper picks now always use
+real file sizes (unprobed copies used to rank on "0 bytes"
+and fall to path order), and episodes whose titles start
+with numbers (like "500 Keys") are no longer mistaken for
+fractional episodes. Genuine half-episodes still work as
+before.
 
 **New in v1.3.0:** the link plan can now export its
 problems. After previewing a link plan in the Organize tab's
