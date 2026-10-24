@@ -11,7 +11,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.3.3
+- **Version:** 1.3.4
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -19,10 +19,12 @@ double-click `.exe` on Windows.
 
 ## Screenshots
 
-Taken from a running 1.2.0 instance (the UI is unchanged in
-1.3.3 apart from extra bottom clearance when the Ko-fi
-button is drawn; 1.3.2 added the Settings Support card;
-1.3.0 added one button) over a small synthetic
+Taken from a running 1.2.0 instance (1.3.4 changes only
+the link plan's presentation — 0-BYTE flags, a grouped
+Skipped summary, collapsible sections; 1.3.3 added extra
+bottom clearance when the Ko-fi button is drawn; 1.3.2
+added the Settings Support card; 1.3.0 added one button)
+over a small synthetic
 demo library (the same generated fixture library the tests
 use — no real collection is shown). All shots use the
 default Midnight theme except the last, which shows
@@ -202,7 +204,7 @@ in the data folder (`deleted-actions.json`,
 
 ## Install
 
-Get `WellKeptLib-1.3.3-public.zip` from the
+Get `WellKeptLib-1.3.4-public.zip` from the
 [Releases](../../releases) page and extract it. The package
 contains the three binaries, `install.sh`, and the two install
 guides ([INSTALL-ULTRA.md](INSTALL-ULTRA.md),
@@ -304,8 +306,8 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.3.3 binaries. Four disclosed divergences — in test files,
-  one default, and one UI clearance fix: the fixture lookup helper
+  1.3.4 binaries. Three disclosed divergences — in test
+  files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
   the bulk parser regression in `bulk_export_131_test.go`
@@ -318,13 +320,14 @@ to the internet.
   (2026-10-23), as a scoped exception to the scrub rule
   for this one default value only: donations from public
   users therefore go to the maintainer, and the button
-  works out of the box. The UI placeholder stays generic;
-  and the Ko-fi clearance fix in `web/index.html` (extra
-  bottom padding plus lifting the Duplicates batch bar and
-  the back-navigation toast while the floating button is
-  drawn, so it can never cover content) originates in this
-  public edition. No other product code or test assertion
-  differs from
+  works out of the box. The UI placeholder stays generic.
+  (The Ko-fi clearance fix in `web/index.html` — extra
+  bottom padding plus lifting the Duplicates batch bar
+  and the back-navigation toast while the floating button
+  is drawn — originated in this public edition's 1.3.3
+  and was adopted into the development tree in 1.3.4, so
+  it is no longer a divergence.) No other product code
+  or test assertion differs from
   the development tree, and every other scrub item still
   applies in full. The public
   edition was produced from a
@@ -376,46 +379,43 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.3.3)
+## Verification (what was actually checked for 1.3.4)
 
-- Go test suite: **282 top-level tests, all passing**,
+- Go test suite: **284 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (282 PASS, 0 FAIL);
+  re-run on this published tree (284 PASS, 0 FAIL);
   `go vet` and `gofmt` clean. No pre-existing test
-  expectation changed (278 carried + 4 new zero-size
-  link tests; the central one fails on the 1.3.2 base).
-- Page checks: 162 ids looked up / 187 defined, all resolve;
-  the Node render harness passes **128/128** online (stub
-  CDN seam), with offline / blank / disabled scenarios
-  green as well.
-- Shipped-binary smoke: **91/91** — the full carried
-  battery (baseline 11/2/2/6, incident replay, link mode,
-  themes, icons, report/exports, CLI codes, the 1.3.0
-  export, the 1.3.1 keeper-evidence checks, the 1.3.2
-  Ko-fi checks) plus 4 new 1.3.3 checks over HTTP: the
-  plan selects a 0-byte episode and records its size as
-  0, the file then grows with identity and recorded
-  mtime restored, and Apply still creates the link with
-  target identity equal to the source's. The public
-  package's extracted binary passes the same smoke, and
-  the installer walk passes **12/12** (with the honest
+  expectation changed (282 carried + 2 new
+  `LinkAlternate.Size` payload tests).
+- Page checks: 162 ids looked up / 192 defined, all
+  resolve; the Node render harness passes **159/159**
+  online (stub CDN seam), with offline / blank /
+  disabled scenarios green as well. The harness covers
+  the 0-BYTE flag cases (all-zero group, mixed group,
+  fully-measured plan, absent probe fact), the grouped
+  Skipped summary, and the collapsible sections; one
+  carried harness expectation was deliberately reworked
+  (a skipped file is now asserted behind its group
+  expander instead of in the default render — that is
+  the feature working as ordered).
+- Shipped-binary smoke: **93/93** — the full carried
+  battery (baseline 11/2/2/6, incident replay, link
+  mode, themes, icons, report/exports, CLI codes, the
+  1.3.0 export, the 1.3.1 keeper-evidence checks, the
+  1.3.2 Ko-fi checks, the 1.3.3 zero-size checks) plus 2
+  new 1.3.4 page checks (the served page carries the
+  0-BYTE flag + grouped-Skipped wiring, and the
+  collapsible-section wiring). The public package's
+  extracted binary passes the same smoke, and the
+  installer walk passes **12/12** (with the honest
   limit that `systemctl` is shimmed in the sandbox
   walks).
 - Standalone clone proof: a clean copy of this tree,
   with fixtures generated by the shipped
   `fixtures/generate.sh`, passes `go test ./...` —
-  **281 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
+  **283 PASS, 0 FAIL, 1 SKIP** (the bulk regression,
   which needs the unshipped real-export corpus; see the
   transparency note).
-- **Ko-fi clearance, measured:** with the widget's real
-  CSS and script served locally (the build VM cannot
-  reach the CDN from a browser), the floating button
-  measures 180×65 px at 16 px from the bottom-left,
-  top edge 81 px from the viewport bottom. After the
-  fix, all 8 tabs at max scroll show **zero overlaps**
-  at 1280 px and 360 px viewports, and the Duplicates
-  batch bar sits at bottom: 92 px while the button is
-  drawn.
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -467,6 +467,18 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
   the key test fails on 1.3.2 as expected. The live
   proof — applying a link build on a real tree whose
   files report size 0 — is the maintainer's.
+- **The 1.3.4 plan presentation is fixture-proven.** The
+  live proof is a plan preview on a real tree: 0-BYTE
+  flags on a zero-reporting pack, the grouped summary on
+  a plan with thousands of skips, the folded sections.
+- **Applying a very large link plan can outlast a
+  reverse proxy.** Link Apply/Undo run synchronously;
+  on a plan of ~9,000 links the maintainer's proxied
+  install answered the browser with an HTTP 504 while
+  the apply itself kept running server-side and
+  completed. Nothing is lost — the manifest records the
+  outcome — but the wait is blind. A background-job
+  apply with a live progress bar is in development.
 - **The problems export has now seen a real tree — and
   1.3.1 is the result.** The first real link-problems
   export surfaced both defects fixed here. Honest boundary:
@@ -517,6 +529,36 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.3.4
+
+- **Zero-byte copies are flagged `0-BYTE` in the link
+  plan.** A copy whose measured size is 0 now carries a
+  red flag — beside the copy inside a collision, beside
+  a planned link, and at the head of a collision whose
+  every copy measures 0 — instead of hiding inside an
+  ordinary-looking collision. A copy with no measurement
+  at all never flags. Which copies win or get linked
+  does not change (one additive payload field,
+  `LinkAlternate.Size`, values only).
+- **The Skipped list is a grouped summary.** Both plan
+  previews (move and link) now group skipped files by
+  their exact reason: a bold count, the reason, and a
+  one-line plain-language explanation of what those
+  files are and why they are left alone. The full list
+  is one click away per group ("show files"), listing
+  exactly its files as before.
+- **Plan sections collapse.** Every section of a plan
+  preview folds from its header, which keeps its title
+  and count visible while folded. The two longest lists
+  — Skipped and Already linked — start folded; the rest
+  start open.
+- **The Ko-fi clearance fix is now in the main build
+  too.** It shipped first in the public edition's
+  1.3.3; the development build has adopted it unchanged,
+  so both editions are identical here again.
+- Presentation only: no planner, ranking, feasibility,
+  apply/undo, or export behavior changes.
 
 ## Release notes — 1.3.3
 

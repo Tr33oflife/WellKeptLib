@@ -2606,6 +2606,122 @@ function orgRel(p){
   return p;
 }
 
+/* ---- Collapsible plan sections (v1.3.4) ----
+   Every result section in both plan previews is wrapped by
+   planSection: a header carrying a chevron (▾ open, ▸ shut)
+   that stays visible — title and count included — and a
+   body the header click shows or hides. Skipped and Already
+   linked start folded: they are the giant reference lists.
+   The decision sections (Links to create / Moves,
+   Collisions, Target conflicts, Unlinkable, Couldn't
+   identify) start open. Toggle state lives in the rendered
+   DOM only — re-rendering a plan resets to these defaults. */
+function planSection(id, titleHTML, bodyHTML, open){
+  return '<h3 id="sech-' + id + '" title="Show or hide this section" style="margin:16px 0 6px;cursor:pointer;user-select:none">' +
+    '<span id="secchev-' + id + '">' + (open ? "▾" : "▸") + "</span> " + titleHTML + "</h3>" +
+    '<div id="secbody-' + id + '"' + (open ? "" : ' style="display:none"') + ">" + bodyHTML + "</div>";
+}
+
+function togglePlanSection(id){
+  const body = $("secbody-" + id), chev = $("secchev-" + id);
+  if (!body) return;
+  const show = body.style.display === "none";
+  body.style.display = show ? "" : "none";
+  if (chev) chev.textContent = show ? "▾" : "▸";
+}
+
+function wirePlanSections(ids){
+  ids.forEach(id => {
+    const hd = $("sech-" + id);
+    if (hd) hd.addEventListener("click", () => togglePlanSection(id));
+  });
+}
+
+/* ---- Skipped sections, grouped by reason (v1.3.4) ----
+   On a real tree the Skipped list runs to thousands of rows
+   of the same few reasons — a wall nobody can read past.
+   Both plan renderers (move + link) therefore paint the
+   section as a summary: one row per reason with its count
+   and a plain-language explanation, the full per-file list
+   one click away per group (filled in on demand, so a huge
+   list costs nothing until it is asked for). WHAT gets
+   skipped does not change — only how it is presented. */
+const SKIP_REASON_INFO = {
+  "symbolic link — left alone": "A shortcut that points at a file somewhere else. The app never follows shortcuts, so the file it points at is left completely untouched.",
+  "sidecar with no matching video": "A subtitle, info or artwork file whose video is not part of this plan, so there is nothing for it to travel with. It stays exactly where it is — nothing is deleted.",
+  "matches more than one video in its folder — left in place": "A subtitle or artwork file that could belong to more than one video in its folder. Rather than guess and attach it to the wrong video, the app leaves it in place.",
+  "folder holds more than one work — artwork left in place": "Artwork sitting in a folder that holds more than one movie or show, so the app cannot tell which one it belongs to. It stays in the folder, untouched.",
+};
+let skipGroupsData = { move: [], link: [] };
+
+function groupSkipped(skipped){
+  const byReason = new Map();
+  (skipped || []).forEach(u => {
+    if (!byReason.has(u.reason)) byReason.set(u.reason, []);
+    byReason.get(u.reason).push(u);
+  });
+  return [...byReason.entries()]
+    .map(([reason, files]) => ({ reason, files }))
+    .sort((a, b) => (b.files.length - a.files.length) || (a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0));
+}
+
+// skippedSectionTitle is the Skipped section's header text
+// (the renderers wrap the body below in a collapsible
+// planSection under this title).
+function skippedSectionTitle(skipped){
+  return "Skipped — " + skipped.length + (skipped.length === 1 ? " file" : " files") + ", grouped by reason";
+}
+
+// skippedSectionHTML paints one plan's Skipped groups —
+// the body of its collapsible section ("" when there is
+// nothing skipped). The groups are stashed in
+// skipGroupsData[side] for toggleSkipFiles; an
+// unrecognized reason shows its text with no invented
+// explanation.
+function skippedSectionHTML(skipped, side){
+  const groups = groupSkipped(skipped);
+  skipGroupsData[side] = groups;
+  if (!groups.length) return "";
+  let h = groups.map((g, i) => {
+    const info = SKIP_REASON_INFO[g.reason];
+    return '<div style="margin:0 0 10px"><div><b>' + g.files.length + '</b> × <span>' + esc(g.reason) + "</span> " +
+      '<button class="small" id="btn-skipfiles-' + side + "-" + i + '">show files</button></div>' +
+      (info ? '<div class="small dim" style="margin-top:2px;max-width:840px">' + esc(info) + "</div>" : "") +
+      '<div id="skipfiles-' + side + "-" + i + '"></div></div>';
+  }).join("");
+  return h;
+}
+
+// wireSkipToggles attaches the show/hide handlers for one
+// rendered Skipped section.
+function wireSkipToggles(side){
+  (skipGroupsData[side] || []).forEach((g, i) => {
+    const b = $("btn-skipfiles-" + side + "-" + i);
+    if (b) b.addEventListener("click", () => toggleSkipFiles(side, i));
+  });
+}
+
+// toggleSkipFiles fills (or clears) one reason group's
+// per-file list — the same rows the section used to render
+// up front: path + reason, nothing summarized away.
+function toggleSkipFiles(side, i){
+  const box = $("skipfiles-" + side + "-" + i);
+  const btn = $("btn-skipfiles-" + side + "-" + i);
+  if (!box) return;
+  if (box.innerHTML){
+    box.innerHTML = "";
+    if (btn) btn.textContent = "show files";
+    return;
+  }
+  const g = (skipGroupsData[side] || [])[i];
+  if (!g) return;
+  const rel = side === "link" ? linkRelSrc : orgRel;
+  box.innerHTML = '<div style="overflow-x:auto;margin-top:6px"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+    g.files.map(u => '<tr><td class="mono dim">' + esc(rel(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
+    "</tbody></table></div>";
+  if (btn) btn.textContent = "hide files";
+}
+
 // renderOrganizePlan paints the current plan: summary chips, then
 // Moves, Collisions, Couldn't identify, Skipped (empty sections are
 // omitted), the already-organized list, and the Apply / Undo row.
@@ -2621,29 +2737,30 @@ function renderOrganizePlan(resultHTML){
     '<span class="chip warn">Collisions <b>' + (st.collisions||0) + "</b></span>" +
     '<span class="chip">Skipped <b>' + (st.skipped||0) + "</b></span></div>";
   if ((p.moves||[]).length){
-    h += '<h3 style="margin:14px 0 6px">Moves</h3><div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>From</th><th></th><th>To</th></tr></thead><tbody>' +
+    h += planSection("mv-moves", "Moves — " + p.moves.length,
+      '<div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>From</th><th></th><th>To</th></tr></thead><tbody>' +
       p.moves.map(m => '<tr><td><span class="badge b-blue">' + esc(m.kind) + '</span></td><td class="mono dim">' + esc(orgRel(m.from)) + '</td><td>→</td><td class="mono">' + esc(orgRel(m.to)) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
   if ((p.collisions||[]).length){
-    h += '<h3 style="margin:16px 0 6px;color:var(--red)">Collisions — these do NOT move</h3><div style="overflow-x:auto"><table><thead><tr><th>Would land on</th><th>From</th><th>Reason</th></tr></thead><tbody>' +
+    h += planSection("mv-coll", '<span style="color:var(--red)">Collisions — these do NOT move</span>',
+      '<div style="overflow-x:auto"><table><thead><tr><th>Would land on</th><th>From</th><th>Reason</th></tr></thead><tbody>' +
       p.collisions.map(c => (c.sources||[]).map((s, i) =>
         '<tr style="background:var(--red-bg)"><td class="mono">' + (i === 0 ? esc(orgRel(c.target)) : "") + '</td><td class="mono dim">' + esc(orgRel(s)) + '</td><td class="small">' + (i === 0 ? esc(c.reason) : "") + "</td></tr>").join("")).join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
   if ((p.unidentified||[]).length){
-    h += '<h3 style="margin:16px 0 6px">Couldn\'t identify — left exactly where they are</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+    h += planSection("mv-notid", "Couldn't identify — left exactly where they are",
+      '<div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
       p.unidentified.map(u => '<tr><td class="mono dim">' + esc(orgRel(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
-  if ((p.skipped||[]).length){
-    h += '<h3 style="margin:16px 0 6px">Skipped</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
-      p.skipped.map(u => '<tr><td class="mono dim">' + esc(orgRel(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
-      "</tbody></table></div>";
-  }
+  const mvSkipBody = skippedSectionHTML(p.skipped || [], "move");
+  if (mvSkipBody) h += planSection("mv-skip", skippedSectionTitle(p.skipped), mvSkipBody, false);
   if ((p.already_organized||[]).length){
-    h += '<p class="dim small" style="margin-top:14px">Already in Jellyfin layout (' + p.already_organized.length + "): " +
-      p.already_organized.map(x => '<span class="mono">' + esc(orgRel(x)) + "</span>").join(" · ") + "</p>";
+    h += planSection("mv-already", "Already in Jellyfin layout (" + p.already_organized.length + ")",
+      '<p class="dim small" style="margin:0">' +
+      p.already_organized.map(x => '<span class="mono">' + esc(orgRel(x)) + "</span>").join(" · ") + "</p>", false);
   }
   const n = (p.moves||[]).length;
   h += '<div style="margin-top:16px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">' +
@@ -2655,6 +2772,8 @@ function renderOrganizePlan(resultHTML){
   if (applyBtn) applyBtn.addEventListener("click", applyOrganize);
   const undoBtn = $("btn-org-undo-last");
   if (undoBtn) undoBtn.addEventListener("click", () => undoOrganize(orgManifestID));
+  wireSkipToggles("move");
+  wirePlanSections(["mv-moves", "mv-coll", "mv-notid", "mv-skip", "mv-already"]);
 }
 
 // applyOrganize executes the previewed plan and reports the outcome
@@ -2803,22 +2922,45 @@ function renderLinkPlan(resultHTML){
     '<span class="chip warn">Couldn\'t identify <b>' + (st.not_identified||0) + "</b></span>" +
     '<span class="chip">Skipped <b>' + (st.skipped||0) + "</b></span></div>";
   const attached = a => (a && a.length) ? '<div class="small dim">withheld with it: ' + a.map(x => esc(linkRelSrc(x))).join(", ") + "</div>" : "";
+  // v1.3.4: a copy that measures 0 bytes is flagged 0-BYTE
+  // (red) wherever the link plan names it — on its own source
+  // line, on a planned link, and on the whole collision group
+  // when every copy in it measures 0. Only a measured 0 is
+  // flagged: a missing fact is not a measurement.
+  const zeroBadge = ' <span class="badge b-red">0-BYTE</span>';
   if ((p.links_to_create||[]).length){
-    h += '<h3 style="margin:14px 0 6px">Links to create</h3><div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
-      p.links_to_create.map(e => '<tr><td><span class="badge b-blue">' + esc(e.kind) + '</span></td><td class="mono dim">' + esc(linkRelSrc(e.source)) + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+    h += planSection("lk-create", "Links to create — " + p.links_to_create.length,
+      '<div style="overflow-x:auto;max-height:440px;overflow-y:auto"><table><thead><tr><th>Kind</th><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
+      p.links_to_create.map(e => '<tr><td><span class="badge b-blue">' + esc(e.kind) + '</span></td><td class="mono dim">' + esc(linkRelSrc(e.source)) + (e.source_size === 0 ? zeroBadge : "") + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
+      "</tbody></table></div>", true);
   }
   if ((p.already_linked||[]).length){
-    h += '<h3 style="margin:16px 0 6px">Already linked</h3><p class="dim small" style="margin:0 0 6px">These targets already hold a hardlink to the source (device + inode identity matched). Apply leaves them exactly as they are.</p><div style="overflow-x:auto"><table><thead><tr><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
+    h += planSection("lk-already", "Already linked — " + p.already_linked.length,
+      '<p class="dim small" style="margin:0 0 6px">These targets already hold a hardlink to the source (device + inode identity matched). Apply leaves them exactly as they are.</p><div style="overflow-x:auto"><table><thead><tr><th>Source</th><th></th><th>Link in target</th></tr></thead><tbody>' +
       p.already_linked.map(e => '<tr><td class="mono dim">' + esc(linkRelSrc(e.source)) + '</td><td>→</td><td class="mono">' + esc(linkRelTgt(e.target)) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", false);
   }
   if ((p.collisions||[]).length){
-    h += '<h3 style="margin:16px 0 6px;color:var(--amber2)">Collisions — more than one source wants one name</h3><div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Decision</th></tr></thead><tbody>' +
+    h += planSection("lk-coll", '<span style="color:var(--amber2)">Collisions — more than one source wants one name</span>',
+      '<div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Decision</th></tr></thead><tbody>' +
       p.collisions.map(c => {
         let d = "";
+        // v1.3.4 0-BYTE flags: the keeper is measured by its
+        // probe fact (absent fact = not measured, never
+        // flagged), alternates by the size the payload now
+        // carries, and ineligible copies by their recorded
+        // size (the payload omits a recorded 0, so fall back
+        // to the probe fact's size there).
+        const keeperZero = !!(c.keeper_probe && c.keeper_probe.size === 0);
+        const altZero = a => a.size === 0;
+        const skipZero = x => (typeof x.size === "number") ? x.size === 0 : !!(x.probe && x.probe.size === 0);
+        const measured = [];
+        if (c.keeper_source) measured.push(keeperZero);
+        (c.alternates||[]).forEach(a => measured.push(altZero(a)));
+        (c.ineligible||[]).forEach(x => measured.push(skipZero(x)));
+        if (measured.length && measured.every(z => z)) d += '<span class="badge b-red">0-BYTE</span> ';
         if (c.keeper_source){
-          d += '<span class="badge b-green">Keeper</span> <span class="mono">' + esc(linkRelSrc(c.keeper_source)) + "</span>";
+          d += '<span class="badge b-green">Keeper</span> <span class="mono">' + esc(linkRelSrc(c.keeper_source)) + "</span>" + (keeperZero ? zeroBadge : "");
           if (c.ranking_note) d += '<div class="small dim">' + esc(c.ranking_note) + "</div>";
         } else {
           d += '<span class="badge b-red">No keeper chosen</span>';
@@ -2828,35 +2970,36 @@ function renderLinkPlan(resultHTML){
         (c.alternates||[]).forEach(a => {
           d += '<div class="small" style="margin-top:4px">Alternate: <span class="mono dim">' + esc(linkRelSrc(a.source)) + "</span>" +
             (a.same_physical ? ' <span class="badge b-dim">same physical file</span>' : "") +
+            (altZero(a) ? zeroBadge : "") +
             '<div class="dim">' + esc(a.reason) + "</div>" + attached(a.attached_files) + "</div>";
         });
         (c.ineligible||[]).forEach(x => {
-          d += '<div class="small" style="margin-top:4px">Ineligible: <span class="mono dim">' + esc(linkRelSrc(x.path)) + '</span><div class="dim">' + esc(x.reason) + "</div>" + attached(x.attached_files) + "</div>";
+          d += '<div class="small" style="margin-top:4px">Ineligible: <span class="mono dim">' + esc(linkRelSrc(x.path)) + '</span>' + (skipZero(x) ? zeroBadge : "") + '<div class="dim">' + esc(x.reason) + "</div>" + attached(x.attached_files) + "</div>";
         });
         return '<tr><td class="mono">' + esc(linkRelTgt(c.target)) + "</td><td>" + d + "</td></tr>";
       }).join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
   if ((p.target_conflicts||[]).length){
-    h += '<h3 style="margin:16px 0 6px;color:var(--red)">Target conflicts — occupied, never overwritten</h3><div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Blocked source(s)</th><th>What is there</th><th>Reason</th></tr></thead><tbody>' +
+    h += planSection("lk-conf", '<span style="color:var(--red)">Target conflicts — occupied, never overwritten</span>',
+      '<div style="overflow-x:auto"><table><thead><tr><th>Target</th><th>Blocked source(s)</th><th>What is there</th><th>Reason</th></tr></thead><tbody>' +
       p.target_conflicts.map(c => '<tr style="background:var(--red-bg)"><td class="mono">' + esc(linkRelTgt(c.target)) + '</td><td class="mono dim">' + (c.sources||[]).map(s => esc(linkRelSrc(s))).join("<br>") + attached(c.attached_files) + '</td><td class="small">' + esc(c.occupant) + '</td><td class="small">' + esc(c.reason) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
   if ((p.unlinkable||[]).length){
-    h += '<h3 style="margin:16px 0 6px">Unlinkable — a hardlink cannot be proven for these</h3><div style="overflow-x:auto"><table><thead><tr><th>Source</th><th>Would link to</th><th>Reason</th></tr></thead><tbody>' +
+    h += planSection("lk-unlink", "Unlinkable — a hardlink cannot be proven for these",
+      '<div style="overflow-x:auto"><table><thead><tr><th>Source</th><th>Would link to</th><th>Reason</th></tr></thead><tbody>' +
       p.unlinkable.map(u => '<tr><td class="mono dim">' + esc(linkRelSrc(u.path)) + '</td><td class="mono dim">' + esc(u.target ? linkRelTgt(u.target) : "") + '</td><td class="small">' + esc(u.reason) + attached(u.attached_files) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
   if ((p.not_identified||[]).length){
-    h += '<h3 style="margin:16px 0 6px">Couldn\'t identify — no link is created</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
+    h += planSection("lk-notid", "Couldn't identify — no link is created",
+      '<div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
       p.not_identified.map(u => '<tr><td class="mono dim">' + esc(linkRelSrc(u.path)) + '</td><td class="small">' + esc(u.reason) + attached(u.attached_files) + "</td></tr>").join("") +
-      "</tbody></table></div>";
+      "</tbody></table></div>", true);
   }
-  if ((p.skipped||[]).length){
-    h += '<h3 style="margin:16px 0 6px">Skipped</h3><div style="overflow-x:auto"><table><thead><tr><th>File</th><th>Reason</th></tr></thead><tbody>' +
-      p.skipped.map(u => '<tr><td class="mono dim">' + esc(linkRelSrc(u.path)) + '</td><td class="small">' + esc(u.reason) + "</td></tr>").join("") +
-      "</tbody></table></div>";
-  }
+  const lkSkipBody = skippedSectionHTML(p.skipped || [], "link");
+  if (lkSkipBody) h += planSection("lk-skip", skippedSectionTitle(p.skipped), lkSkipBody, false);
   (p.warnings||[]).forEach(w => {
     h += '<div class="small" style="color:var(--amber2);margin-top:14px;max-width:840px">⚠ ' + esc(w.message) + "</div>";
   });
@@ -2873,6 +3016,8 @@ function renderLinkPlan(resultHTML){
   if (exportBtn) exportBtn.addEventListener("click", exportLinkProblems);
   const undoBtn = $("btn-link-undo-last");
   if (undoBtn) undoBtn.addEventListener("click", () => undoLinkBuild(linkManifestID));
+  wireSkipToggles("link");
+  wirePlanSections(["lk-create", "lk-already", "lk-coll", "lk-conf", "lk-unlink", "lk-notid", "lk-skip"]);
 }
 
 // exportLinkProblems downloads the current link plan's

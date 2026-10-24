@@ -1,11 +1,11 @@
-# Install — Windows (WellKeptLib v1.3.3)
+# Install — Windows (WellKeptLib v1.3.4)
 
 The Windows shape is the secondary one (the seedbox/Ultra shape is
 canonical), and it is simple: one .exe, no installer, no runtime.
 
 ## Click-by-click
 
-1. Extract `WellKeptLib-1.3.3-public.zip` to a folder you keep
+1. Extract `WellKeptLib-1.3.4-public.zip` to a folder you keep
    (e.g. `Documents\WellKeptLib`). You will see
    `plex-file-manager.exe` (Windows) and `plex-file-manager` (Linux —
    ignore that one on Windows).
@@ -201,6 +201,38 @@ themselves when the new results land. And since v0.3.7,
 the delete because the file is read-only, the app makes it
 writable and retries once (the same applies to the Health
 tab's delete).
+
+## What's new in v1.3.4
+
+- **Copies that measure 0 bytes are flagged 0-BYTE.** In
+  the hardlink (link library) preview, a copy whose
+  measured size is 0 now carries a red 0-BYTE flag — next
+  to the copy inside a collision, next to a planned link,
+  and on the whole collision when every copy in it
+  measures 0 — instead of looking like an ordinary
+  collision. Which copies win or get linked does not
+  change; the flag only makes zero-byte copies impossible
+  to miss.
+- **Skipped files are grouped by reason.** The Skipped
+  list at the end of both plan previews (move and link) is
+  now a short summary: one row per reason, with how many
+  files it covers and a plain-language explanation of what
+  those files are and why they are left alone. The full
+  list is still there — "show files" next to a reason
+  lists exactly its files.
+- **Plan sections fold away.** Every section of a plan
+  preview (Links to create, Collisions, Skipped, and the
+  rest, in both move and link modes) can be collapsed by
+  clicking its header; the header keeps the title and
+  count visible while folded. The two longest lists —
+  Skipped and Already linked — start folded; click to
+  open them.
+- **The Ko-fi Donate button can no longer cover page
+  content.** Every tab has more room at the bottom, and
+  when the button is shown, the Duplicates batch bar and
+  the back-navigation hint lift above it. (This clearance
+  fix already shipped in the public edition; it is part
+  of the private build from this version on.)
 
 ## What's new in v1.3.3
 

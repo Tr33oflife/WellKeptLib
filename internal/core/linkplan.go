@@ -160,6 +160,13 @@ type LinkAlternate struct {
 	Reason        string   `json:"reason"`
 	SamePhysical  bool     `json:"same_physical,omitempty"`
 	AttachedFiles []string `json:"attached_files,omitempty"`
+	// Size is the walk-measured size of this alternate's own
+	// file (v1.3.4, additive): carried so the link-plan UI can
+	// flag copies that measure 0 bytes with its 0-BYTE badge.
+	// Always serialized — for an alternate the walk always
+	// measured the file, so 0 is a measurement, not an
+	// absence. No computed outcome reads it.
+	Size int64 `json:"size"`
 	// Diagnostic facts (v1.3.0, additive — see LinkSkip).
 	Parsed *LinkParsedFact `json:"parsed,omitempty"`
 	Probe  *LinkProbeFact  `json:"probe,omitempty"`
@@ -787,7 +794,7 @@ func (b *linkPlanBuilder) resolveOccupiedGroup(target string, group []*videoPlan
 			reason = "same physical file as the linked copy — no second link needed"
 		}
 		col.Alternates = append(col.Alternates, LinkAlternate{
-			Source: vp.File.Path, Reason: reason, SamePhysical: same,
+			Source: vp.File.Path, Reason: reason, SamePhysical: same, Size: vp.File.Size,
 			Parsed: linkParsedFact(vp.Parsed), Probe: linkProbeFactFromFile(vp.File, vp.Parsed.Resolution),
 		})
 		vp.Status = "alternate"
@@ -894,7 +901,7 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 			}
 			for _, ex := range extras[rep] {
 				col.Alternates = append(col.Alternates, LinkAlternate{
-					Source: ex.File.Path, SamePhysical: true,
+					Source: ex.File.Path, SamePhysical: true, Size: ex.File.Size,
 					Reason: "same physical file as the keeper — no second link needed",
 					Parsed: linkParsedFact(ex.Parsed), Probe: linkProbeFactFromFile(ex.File, ex.Parsed.Resolution),
 				})
@@ -982,7 +989,7 @@ func (b *linkPlanBuilder) resolveAbsentVideoGroup(target string, group []*videoP
 	}
 	addAlt := func(vp *videoPlan, reason string, same bool, probe *LinkProbeFact) {
 		col.Alternates = append(col.Alternates, LinkAlternate{
-			Source: vp.File.Path, Reason: reason, SamePhysical: same,
+			Source: vp.File.Path, Reason: reason, SamePhysical: same, Size: vp.File.Size,
 			Parsed: linkParsedFact(vp.Parsed), Probe: probe,
 		})
 		vp.Status = "alternate"
@@ -1046,7 +1053,7 @@ func (b *linkPlanBuilder) addUnresolvedCollision(target string, group []*videoPl
 			probe = linkProbeFactFromItem(it)
 		}
 		col.Alternates = append(col.Alternates, LinkAlternate{
-			Source: vp.File.Path, Reason: altReason,
+			Source: vp.File.Path, Reason: altReason, Size: vp.File.Size,
 			Parsed: linkParsedFact(vp.Parsed), Probe: probe,
 		})
 		vp.Status = "alternate"
@@ -1265,7 +1272,7 @@ func (b *linkPlanBuilder) classifyCandidates(cands []*linkCandidate) {
 				Target: c.target,
 				Reason: "this name is already taken by a video in this plan — the file is not linked",
 				Alternates: []LinkAlternate{{
-					Source: c.file.Path,
+					Source: c.file.Path, Size: c.file.Size,
 					Reason: "not linked — a video target (" + src + ") takes this name",
 					Probe:  linkProbeFactFromFile(c.file, ""),
 				}},
@@ -1312,7 +1319,7 @@ func (b *linkPlanBuilder) classifyCandidateGroup(group []*linkCandidate) {
 		}
 		for _, c := range sorted {
 			col.Alternates = append(col.Alternates, LinkAlternate{
-				Source: c.file.Path, Reason: "not linked — the target is shared with another file",
+				Source: c.file.Path, Reason: "not linked — the target is shared with another file", Size: c.file.Size,
 				Probe: linkProbeFactFromFile(c.file, ""),
 			})
 		}
@@ -1379,7 +1386,7 @@ func (b *linkPlanBuilder) addSamePhysicalAlternates(rep *linkCandidate, ex []*li
 	}
 	for _, c := range ex {
 		col.Alternates = append(col.Alternates, LinkAlternate{
-			Source: c.file.Path, Reason: reason, SamePhysical: true,
+			Source: c.file.Path, Reason: reason, SamePhysical: true, Size: c.file.Size,
 			Probe: linkProbeFactFromFile(c.file, ""),
 		})
 	}

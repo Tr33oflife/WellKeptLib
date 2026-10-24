@@ -1,4 +1,4 @@
-# Install — Ultra.cc (WellKeptLib v1.3.3)
+# Install — Ultra.cc (WellKeptLib v1.3.4)
 
 ## Easy way: run ./install.sh
 
@@ -297,6 +297,25 @@ bring your own API key in **Settings → OpenSubtitles**
 your quota, and the wizard shows the remaining number the API
 itself reports). Downloads are verified with the app's own
 language detector and never overwrite an existing file.
+
+**New in v1.3.4:** copies that measure 0 bytes stand out
+in the hardlink preview — each one carries a red 0-BYTE
+flag (next to the copy in a collision, next to a planned
+link, and on a whole collision when every copy in it
+measures 0) instead of looking like an ordinary collision.
+The Skipped list at the end of both plan previews (move
+and link) is now grouped by reason: one row per reason
+with its file count and a plain-language explanation of
+what those files are and why they are left alone, and the
+full file list one click away per reason ("show files").
+Every plan section is collapsible from its header (the
+header keeps its title and count while folded), and the
+two longest lists — Skipped and Already linked — start
+folded. This build also carries the Ko-fi Donate button clearance
+fix — more room at the bottom of every tab, and the
+Duplicates batch bar and back-navigation hint lift above
+the button when it is shown — which already shipped in
+the public edition.
 
 **New in v1.3.3:** a file the app measures as 0 bytes
 still gets its hardlink. When a link build is applied, the
