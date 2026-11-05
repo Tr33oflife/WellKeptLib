@@ -8,6 +8,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -71,12 +72,22 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	mux.HandleFunc("POST /api/exclusions", s.handleExclusionsPost)
 	mux.HandleFunc("GET /api/export.json", s.handleExportJSON)
 	mux.HandleFunc("GET /api/export.csv", s.handleExportCSV)
+	// v1.5.0: the catalog export (Part A) and the Sizes view
+	// projection (Part B).
+	mux.HandleFunc("GET /api/export/catalog", s.handleExportCatalog)
+	mux.HandleFunc("GET /api/sizes", s.handleSizes)
 	// Plex module (v0.2.0) — settings, test, sections import, missing check.
 	mux.HandleFunc("GET /api/plex/settings", s.handlePlexSettingsGet)
 	mux.HandleFunc("POST /api/plex/settings", s.handlePlexSettingsSave)
 	mux.HandleFunc("POST /api/plex/test", s.handlePlexTest)
 	mux.HandleFunc("GET /api/plex/sections", s.handlePlexSections)
 	mux.HandleFunc("POST /api/plex/missing", s.handlePlexMissing)
+	// v1.5.0 delete slice (Part C): preflight, matches, and
+	// the guarded batch delete — the only non-GET the app
+	// ever sends to a Plex server rides the last one.
+	mux.HandleFunc("POST /api/plex/preflight", s.handlePlexPreflight)
+	mux.HandleFunc("POST /api/plex/matches", s.handlePlexMatches)
+	mux.HandleFunc("POST /api/plex/delete", s.handlePlexDelete)
 	// Plex sign-in (v0.3.1) — plex.tv PIN flow: begin -> poll -> choose.
 	mux.HandleFunc("POST /api/plex/signin/begin", s.handlePlexSignInBegin)
 	mux.HandleFunc("GET /api/plex/signin/poll", s.handlePlexSignInPoll)
@@ -366,6 +377,13 @@ func (s *server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		LinkExtras           *bool `json:"link_extras"`
 		AssignSpecialNumbers *bool `json:"assign_special_numbers"`
 		AllowYearlessMovies  *bool `json:"allow_yearless_movies"`
+		// v1.5.0: the large thresholds ride the same
+		// stale-page protection — a pre-1.5.0 tab's save
+		// carries none of the keys, and its decoded zeros
+		// must not silently disable every large flag.
+		LargeMovieBytes   *int64 `json:"large_movie_bytes"`
+		LargeSeasonBytes  *int64 `json:"large_season_bytes"`
+		LargeEpisodeBytes *int64 `json:"large_episode_bytes"`
 	}
 	if err := json.Unmarshal(body, &probe); err == nil {
 		current := s.svc.GetConfig()
@@ -383,6 +401,15 @@ func (s *server) handleConfigSave(w http.ResponseWriter, r *http.Request) {
 		}
 		if probe.AllowYearlessMovies == nil {
 			cfg.AllowYearlessMovies = current.AllowYearlessMovies
+		}
+		if probe.LargeMovieBytes == nil {
+			cfg.LargeMovieBytes = current.LargeMovieBytes
+		}
+		if probe.LargeSeasonBytes == nil {
+			cfg.LargeSeasonBytes = current.LargeSeasonBytes
+		}
+		if probe.LargeEpisodeBytes == nil {
+			cfg.LargeEpisodeBytes = current.LargeEpisodeBytes
 		}
 	}
 	if err := s.svc.SaveConfig(cfg); err != nil {
@@ -574,6 +601,43 @@ func (s *server) handlePlexMissing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handlePlexPreflight -> Service.PlexPreflight (v1.5.0,
+// Part C): the delete readiness report — check-only, the
+// app never changes the server's settings.
+func (s *server) handlePlexPreflight(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.PlexPreflight())
+}
+
+// handlePlexMatches -> Service.PlexMatches (v1.5.0, Part C):
+// the cross-check fetch matched against the scanned library.
+func (s *server) handlePlexMatches(w http.ResponseWriter, r *http.Request) {
+	res, err := s.svc.PlexMatches()
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// handlePlexDelete -> Service.PlexDelete (v1.5.0, Part C):
+// the guarded batch delete. Per-entry outcomes come back
+// in-band — a refused or failed entry is information, not a
+// transport error.
+func (s *server) handlePlexDelete(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items []core.PlexDeleteEntry `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if len(req.Items) == 0 {
+		writeErr(w, http.StatusBadRequest, fmt.Errorf("no files were named for deletion"))
+		return
+	}
+	writeJSON(w, http.StatusOK, s.svc.PlexDelete(req.Items))
 }
 
 // handleOrganizePlan -> Service.OrganizePlan.
@@ -928,6 +992,25 @@ func (s *server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=library.csv")
 	_, _ = w.Write(b)
+}
+
+// handleExportCatalog -> Service.ExportCatalog (v1.5.0,
+// Part A): the wellkeptlib.catalog document as a download.
+func (s *server) handleExportCatalog(w http.ResponseWriter, r *http.Request) {
+	doc, filename := s.svc.ExportCatalog()
+	b, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename="+filename)
+	_, _ = w.Write(append(b, '\n'))
+}
+
+// handleSizes -> Service.Sizes (v1.5.0, Part B).
+func (s *server) handleSizes(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.Sizes())
 }
 
 // --- v1.0.0 handlers: report, history, OpenSubtitles. Thin by

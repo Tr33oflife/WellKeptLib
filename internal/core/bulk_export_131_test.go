@@ -105,15 +105,14 @@ func loadBulkExport(t *testing.T) bulkExport {
 		}
 	}
 	if err != nil {
-		// PUBLIC-TREE NOTE: the corpus is the owner's real
-		// link-problems export, which is NOT shipped in the
-		// public repo (it carries real library paths). In a
-		// standalone clone the corpus tests therefore skip;
-		// they run in full where the verification copies
-		// exist. The named victims and flips the corpus tests
-		// cover are also pinned verbatim in parser_131_test.go,
-		// parser_extras_136_test.go, and the linkplan real-name
-		// tests, so a clone still covers every named fix.
+		// PUBLIC-TREE NOTE: in this tree the real export is absent by
+		// design, so the corpus tests skip here; everywhere else the
+		// loader behaves exactly as upstream. Two tests share this
+		// loader since v1.4.1 (the 1.3.1 regression test and the
+		// 1.4.0 planner-predicate sweep), and one further test pins
+		// the same corpus by basename (parser_131_test.go,
+		// parser_extras_136_test.go, linkplan real-name tests run
+		// against it when present).
 		t.Skipf("real export corpus not present in this tree (tried verification-1.3.1 and verification-1.3.0 copies): %v", err)
 	}
 	var doc bulkExport

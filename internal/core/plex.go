@@ -12,7 +12,19 @@ package core
 // DISCIPLINE (route-2 module rules from the SPEC):
 //   - OPTIONAL: every file tool works with Plex unconfigured. Nothing
 //     in the scanner imports or depends on this file.
-//   - READ-ONLY against Plex: this client only ever issues GETs.
+//   - READ-ONLY against Plex, with ONE named exception (v1.5.0,
+//     CATALOG-SIZES-PLEXDELETE-SPEC §C.2): the module remains
+//     read-only except for the delete slice — the only non-GET the
+//     client may ever issue is the metadata/media DELETE of §C.1
+//     (DELETE /library/metadata/{ratingKey} and
+//     DELETE /library/metadata/{ratingKey}/media/{mediaId}),
+//     issued only through the guarded action of §C.3–C.4
+//     (plex_delete.go: preflight-gated, match-validated, audited).
+//     No other write to a Plex server exists or may be added
+//     quietly: widening this exception needs the same written
+//     amendment this one got. In particular the app NEVER flips
+//     the server's allowMediaDeletion preference — preflight
+//     only reads it.
 //   - TOKEN SECRECY: the token lives only in plex.json (0600) and in
 //     the X-Plex-Token header. No service method returns it — the
 //     views below physically have no field for it (unit-tested).
@@ -61,6 +73,14 @@ type PlexItemPath struct {
 	SectionKey       string `json:"section_key"`
 	File             string `json:"file"`
 	GrandparentTitle string `json:"grandparent_title,omitempty"` // show title for episodes
+	// RatingKey / MediaID (v1.5.0, SPEC §C.3): the Plex item's
+	// own ID and the ID of the media version this file belongs
+	// to, retained from the same fetch — the delete slice
+	// (§C.4) addresses exactly these. One row per Part, so a
+	// multi-version item yields rows sharing a RatingKey with
+	// distinct MediaIDs.
+	RatingKey string `json:"rating_key,omitempty"`
+	MediaID   string `json:"media_id,omitempty"`
 }
 
 // PathMapping is one server-prefix -> local-prefix rewrite pair
@@ -353,6 +373,110 @@ func (c *plexClient) get(path string, query url.Values) ([]byte, error) {
 	return body, nil
 }
 
+// del issues the client's ONE permitted non-GET (v1.5.0 — see
+// the discipline amendment in this file's header): a DELETE
+// against a /library/metadata path. Unlike get, it does NOT
+// fold a non-2xx answer into a generic error: the guarded
+// delete action (§C.4) must surface the server's refusal
+// exactly — a 403 means "deletion is not allowed on this
+// server", a 400 is the known wild failure mode, and either
+// way the status and the server's own body text come back to
+// the caller verbatim-ish. A transport failure is the only
+// error return. The token is never included in any output.
+func (c *plexClient) del(path string) (status int, body string, err error) {
+	u := c.baseURL + path
+	req, err := http.NewRequest(http.MethodDelete, u, nil)
+	if err != nil {
+		return 0, "", fmt.Errorf("bad Plex request URL %q: %v", u, err)
+	}
+	req.Header.Set("X-Plex-Token", c.token)
+	req.Header.Set("X-Plex-Product", plexProductName)
+	req.Header.Set("X-Plex-Version", Version)
+	req.Header.Set("X-Plex-Client-Identifier", c.clientID)
+	req.Header.Set("Accept", "application/xml")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, "", fmt.Errorf("could not reach Plex at %s — %v", c.baseURL, err)
+	}
+	defer resp.Body.Close()
+	b, rerr := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if rerr != nil {
+		return resp.StatusCode, "", fmt.Errorf("reading the answer from Plex at %s failed: %v", c.baseURL, rerr)
+	}
+	return resp.StatusCode, strings.TrimSpace(string(b)), nil
+}
+
+// plexRootXML mirrors the MediaContainer attributes of GET /
+// that the delete preflight reads (v1.5.0, SPEC §C.1/§C.4):
+// PMS reports its own capabilities on the root container —
+// allowMediaDeletion among them — and current builds also
+// carry the owned flag there. Both are read as raw strings:
+// an absent attribute is "unknown", never a guessed default.
+type plexRootXML struct {
+	XMLName            xml.Name `xml:"MediaContainer"`
+	FriendlyName       string   `xml:"friendlyName,attr"`
+	MachineIdentifier  string   `xml:"machineIdentifier,attr"`
+	Version            string   `xml:"version,attr"`
+	AllowMediaDeletion *string  `xml:"allowMediaDeletion,attr"`
+	Owned              *string  `xml:"owned,attr"`
+}
+
+// rootInfo fetches GET / and parses the preflight attributes.
+func (c *plexClient) rootInfo() (*plexRootXML, error) {
+	body, err := c.get("/", nil)
+	if err != nil {
+		return nil, err
+	}
+	var root plexRootXML
+	if err := xml.Unmarshal(body, &root); err != nil {
+		return nil, fmt.Errorf("that URL did not answer like a Plex server (%s): root reply was not parseable XML", c.baseURL)
+	}
+	return &root, nil
+}
+
+// plexPrefsXML mirrors GET /:/prefs: a MediaContainer of
+// Setting elements (id + value attributes) — the server's
+// preference store, where allowMediaDeletion also lives
+// (Settings > Library, advanced). Read-only here, always:
+// the app never writes a preference (§C.2 amendment).
+type plexPrefsXML struct {
+	XMLName  xml.Name `xml:"MediaContainer"`
+	Settings []struct {
+		ID    string `xml:"id,attr"`
+		Value string `xml:"value,attr"`
+	} `xml:"Setting"`
+}
+
+// prefAllowMediaDeletion reads the allowMediaDeletion
+// preference from /:/prefs. The second return is false when
+// the endpoint answers without naming the preference at all
+// ("unknown" — the caller falls back to the root attribute,
+// and failing both, reports it could not confirm).
+func (c *plexClient) prefAllowMediaDeletion() (bool, bool, error) {
+	body, err := c.get("/:/prefs", nil)
+	if err != nil {
+		return false, false, err
+	}
+	var prefs plexPrefsXML
+	if err := xml.Unmarshal(body, &prefs); err != nil {
+		return false, false, fmt.Errorf("Plex preferences reply was not parseable XML")
+	}
+	for _, st := range prefs.Settings {
+		if st.ID == "allowMediaDeletion" {
+			return plexBoolAttr(st.Value), true, nil
+		}
+	}
+	return false, false, nil
+}
+
+// plexBoolAttr interprets a Plex XML/JSON boolean attribute:
+// "1"/"true" (any case) is true, everything else false. An
+// ABSENT attribute never reaches this helper — callers track
+// presence separately so unknown stays unknown.
+func plexBoolAttr(v string) bool {
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
 // plexIdentityXML mirrors the MediaContainer attributes /identity
 // (and /) answer with: friendlyName, machineIdentifier, version.
 type plexIdentityXML struct {
@@ -438,7 +562,9 @@ type plexItemsXML struct {
 		Title            string `xml:"title,attr"`
 		GrandparentTitle string `xml:"grandparentTitle,attr"`
 		Type             string `xml:"type,attr"`
+		RatingKey        string `xml:"ratingKey,attr"`
 		Media            []struct {
+			ID    string `xml:"id,attr"`
 			Parts []struct {
 				File string `xml:"file,attr"`
 			} `xml:"Part"`
@@ -494,6 +620,8 @@ func (c *plexClient) fetchSectionItems(sec PlexSection) ([]PlexItemPath, error) 
 						SectionKey:       sec.Key,
 						File:             part.File,
 						GrandparentTitle: v.GrandparentTitle,
+						RatingKey:        v.RatingKey,
+						MediaID:          m.ID,
 					})
 				}
 			}

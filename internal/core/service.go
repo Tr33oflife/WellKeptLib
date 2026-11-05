@@ -28,7 +28,7 @@ import (
 )
 
 // Version is the app version string served by State / export.
-const Version = "1.4.1"
+const Version = "1.5.0"
 
 // StateInfo is what GET /api/state returns: scan state plus the tool
 // discovery facts the UI header needs.
@@ -176,6 +176,19 @@ type Service struct {
 	// Guarded by mu; network calls never hold it.
 	osSecrets *osSecretsFile
 	osSession *osSession
+	// Plex delete slice (v1.5.0, plex_delete.go): the match
+	// snapshot the last PlexMatches call validated (local path
+	// -> Plex identity), which PlexDelete re-validates against
+	// — a delete may only ever name a file the cross-check
+	// matched, with the IDs that fetch retained. And the set
+	// of local paths Plex has deleted this session: their scan
+	// rows stay (the scan is the record until the next one)
+	// but are marked deleted-pending-rescan in the matches
+	// view. Both in-memory only, guarded by mu; a restart or
+	// a rescan forgets them, which is correct — after either,
+	// the disk and the database are the truth again.
+	plexMatchByPath map[string]*plexMatch
+	plexDeleted     map[string]bool
 }
 
 // NewService loads config, the probe cache, and the last scan results
@@ -376,6 +389,10 @@ func (s *Service) Library(sortBy, order string) []*Item {
 			cp.Excluded = true
 			cp.ExclusionScopes = scopes
 		}
+		// v1.5.0: the large flag is computed HERE, at view
+		// time, from the current thresholds (SPEC §B.3) — the
+		// stored item never carries it.
+		cp.Large = s.cfg.largeForSize(it.Kind, it.Size)
 		out = append(out, &cp)
 	}
 	key := func(it *Item) (f float64, str string) {
@@ -590,6 +607,19 @@ func (s *Service) SaveConfig(in Config) error {
 	// KofiEnabled rule: plain bools, authoritative as sent,
 	// with the handler pre-filling the current values when a
 	// stale page's save omits the keys. No clamp applies.
+	// The v1.5.0 large thresholds ride the same rule (the
+	// handler pre-fills absent keys); the only normalization
+	// here is that a negative byte count is nonsense and
+	// reads as 0 (which disables that flag).
+	if in.LargeMovieBytes < 0 {
+		in.LargeMovieBytes = 0
+	}
+	if in.LargeSeasonBytes < 0 {
+		in.LargeSeasonBytes = 0
+	}
+	if in.LargeEpisodeBytes < 0 {
+		in.LargeEpisodeBytes = 0
+	}
 	// Roots saved through Settings get the same input hygiene as
 	// roots sent to StartScan (quotes/tilde/env expansion, v0.1.1).
 	cleaned := make([]string, 0, len(in.Roots))
@@ -689,6 +719,9 @@ func (s *Service) ExportInventory() ExportData {
 			cp.Excluded = true
 			cp.ExclusionScopes = scopes
 		}
+		// v1.5.0: additive `large` in the inventory export,
+		// computed at export time like the Library view's.
+		cp.Large = s.cfg.largeForSize(it.Kind, it.Size)
 		items = append(items, &cp)
 	}
 	groups, _ := buildDuplicates(s.results.Items, s.cfg, s.cfg.Exclusions)
@@ -712,7 +745,7 @@ func (s *Service) ExportCSV() ([]byte, error) {
 	items := s.Library("size", "desc")
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"path", "title", "kind", "year", "season", "episodes", "edition", "size_bytes", "duration_sec", "resolution", "codec", "bitrate", "hdr", "probe_ok"})
+	_ = w.Write([]string{"path", "title", "kind", "year", "season", "episodes", "edition", "size_bytes", "duration_sec", "resolution", "codec", "bitrate", "hdr", "probe_ok", "large"})
 	for _, it := range items {
 		eps := ""
 		for i, e := range it.Episodes {
@@ -724,7 +757,7 @@ func (s *Service) ExportCSV() ([]byte, error) {
 		_ = w.Write([]string{
 			it.Path, it.Title, it.Kind, fmt.Sprint(it.Year), fmt.Sprint(it.Season), eps, it.Edition,
 			fmt.Sprint(it.Size), fmt.Sprintf("%.1f", it.Duration), it.ResolutionLabel, it.Codec,
-			fmt.Sprint(it.Bitrate), fmt.Sprint(it.HDR), fmt.Sprint(it.ProbeOK),
+			fmt.Sprint(it.Bitrate), fmt.Sprint(it.HDR), fmt.Sprint(it.ProbeOK), fmt.Sprint(it.Large),
 		})
 	}
 	w.Flush()

@@ -94,10 +94,8 @@ type Config struct {
 	// string (no omitempty): a saved blank must survive a
 	// round trip as blank, distinct from a missing key (which
 	// loadConfig maps to the default — see the presence probe
-	// there). PUBLIC EDITION EXCEPTION (owner-decided
-	// 2026-10-23): the default is carried as-is, so the
-	// button works out of the box for public users donating
-	// to the maintainer. A blank value still disables it.
+	// there). The default is the maintainer's handle, carried
+	// in the public build by owner exception — see config.go.
 	KofiUsername string `json:"kofi_username"`
 	// KofiEnabled (v1.3.2, owner-added mid-build): the
 	// "Show Ko-fi Donate button" toggle — a preference like
@@ -142,6 +140,19 @@ type Config struct {
 	// (no_year) and badged. OFF restores the pre-1.4.0 law:
 	// a movie with no year is not identified.
 	AllowYearlessMovies bool `json:"allow_yearless_movies"`
+	// v1.5.0 large-file thresholds (CATALOG-SIZES-PLEXDELETE-
+	// SPEC §B.2): byte counts at or over which a movie file, a
+	// season roll-up, or an episode file is flagged "large" in
+	// the Library/Sizes views and in the exports. PREFERENCES,
+	// not tuning: ResetTuning deliberately leaves them alone
+	// (the v1.4.0 link switches' treatment). Presence-aware
+	// load merge: a pre-1.5.0 config gets the defaults (6/20/3
+	// GiB, the owner's numbers); an explicit 0 is honored
+	// exactly and DISABLES that flag — the int64 pointer probe
+	// in loadConfig is what separates "absent" from "0".
+	LargeMovieBytes   int64 `json:"large_movie_bytes"`
+	LargeSeasonBytes  int64 `json:"large_season_bytes"`
+	LargeEpisodeBytes int64 `json:"large_episode_bytes"`
 }
 
 // StreamInfo is the flattened per-stream view of an ffprobe stream that
@@ -211,11 +222,18 @@ type Item struct {
 	// platform/filesystem" — duplicates math then falls back to
 	// the pre-v1.0.0 per-file arithmetic and says so. Nlink is
 	// the link count at walk time (0 = unknown).
-	Dev             uint64   `json:"dev,omitempty"`
-	Ino             uint64   `json:"ino,omitempty"`
-	Nlink           uint64   `json:"nlink,omitempty"`
-	IsSample        bool     `json:"is_sample,omitempty"` // sample/trailer/extras pattern
-	Special         string   `json:"special,omitempty"`   // "multi-episode" | "split-file"
+	Dev      uint64 `json:"dev,omitempty"`
+	Ino      uint64 `json:"ino,omitempty"`
+	Nlink    uint64 `json:"nlink,omitempty"`
+	IsSample bool   `json:"is_sample,omitempty"` // sample/trailer/extras pattern
+	Special  string `json:"special,omitempty"`   // "multi-episode" | "split-file"
+	// Large (v1.5.0): this file is at or over its kind's
+	// large threshold (SPEC §B.3). Computed from the CURRENT
+	// thresholds at view/export time by the Library and export
+	// projections — the scanner never sets it and it is never
+	// persisted as a scan fact, so a threshold change re-flags
+	// everything with no rescan.
+	Large           bool     `json:"large,omitempty"`
 	Excluded        bool     `json:"excluded,omitempty"`
 	ExclusionScopes []string `json:"exclusion_scopes,omitempty"`
 }

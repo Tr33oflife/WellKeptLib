@@ -30,12 +30,40 @@ const (
 	defaultSubtitleMaxTracks = 6
 )
 
-// defaultKofiUsername (v1.3.2) is the Ko-fi Donate button
-// default. PUBLIC EDITION EXCEPTION (owner-decided 2026-10-23):
-// this default is carried as-is from the private build, so
-// donations from public users go to the maintainer. Scoped
-// exception to the scrub rule for this one default value
-// only — every other denylist item still applies in full.
+// v1.5.0 large-file threshold defaults (SPEC §B.2 — the
+// owner's numbers): a 6 GiB movie, a 20 GiB season, a 3 GiB
+// episode. Stored as bytes; the Settings page presents GB.
+const (
+	defaultLargeMovieBytes   int64 = 6 << 30
+	defaultLargeSeasonBytes  int64 = 20 << 30
+	defaultLargeEpisodeBytes int64 = 3 << 30
+)
+
+// largeForSize reports whether a file of the given kind at the
+// given size is "large" under the config's thresholds (SPEC
+// §B.3): at-or-over flags; a threshold of 0 disables that
+// kind's flag entirely. Only movie and episode FILES flag —
+// season largeness is a roll-up question (sizes.go).
+func (c *Config) largeForSize(kind string, size int64) bool {
+	var thr int64
+	switch kind {
+	case "movie":
+		thr = c.LargeMovieBytes
+	case "episode":
+		thr = c.LargeEpisodeBytes
+	default:
+		return false
+	}
+	return thr > 0 && size >= thr
+}
+
+// defaultKofiUsername (v1.3.2) is the default for the Ko-fi
+// Donate button. PUBLIC EDITION EXCEPTION (owner-decided
+// 2026-10-23): the public build CARRIES this default so
+// donations reach the project's maintainer and the button
+// works out of the box; the maintainer accepted the handle
+// being public. This is the ONLY personal default the scrub
+// gate allows.
 const defaultKofiUsername = "t4v3rn"
 
 // checkKofiUsername validates a Ko-fi handle for saving: blank
@@ -100,9 +128,9 @@ func defaultConfig() *Config {
 		WebhookFlavor: "generic",
 		// v1.2.0: the UI theme defaults to the original palette.
 		Theme: DefaultTheme,
-		// v1.3.2: the Ko-fi username default. PUBLIC
-		// EDITION EXCEPTION (owner-decided 2026-10-23): carried
-		// as-is (see the KofiUsername field comment in model.go).
+		// v1.3.2: the default Ko-fi username — carried in
+		// the public build by owner exception (see the
+		// defaultKofiUsername comment above).
 		KofiUsername: defaultKofiUsername,
 		// v1.3.2: the Donate toggle defaults ON — the
 		// online-conditional behavior is what ships.
@@ -113,6 +141,11 @@ func defaultConfig() *Config {
 		LinkExtras:           true,
 		AssignSpecialNumbers: true,
 		AllowYearlessMovies:  true,
+		// v1.5.0: the large-file thresholds default to the
+		// owner's numbers (SPEC §B.2).
+		LargeMovieBytes:   defaultLargeMovieBytes,
+		LargeSeasonBytes:  defaultLargeSeasonBytes,
+		LargeEpisodeBytes: defaultLargeEpisodeBytes,
 	}
 	if p, err := exec.LookPath("ffprobe"); err == nil {
 		c.FFprobePath = p
@@ -278,6 +311,28 @@ func loadConfig(dataDir string) (*Config, string) {
 		}
 		if v140Probe.AllowYearlessMovies != nil {
 			c.AllowYearlessMovies = *v140Probe.AllowYearlessMovies
+		}
+	}
+	// v1.5.0: the three large-file thresholds are presence-
+	// aware like the Ko-fi username (a *int64 probe): a config
+	// written before v1.5.0 has none of the keys and keeps the
+	// defaults, but an explicitly saved value — INCLUDING an
+	// explicit 0, which disables that flag — is honored
+	// exactly. A negative value is nonsense and reads as 0.
+	var v150Probe struct {
+		LargeMovieBytes   *int64 `json:"large_movie_bytes"`
+		LargeSeasonBytes  *int64 `json:"large_season_bytes"`
+		LargeEpisodeBytes *int64 `json:"large_episode_bytes"`
+	}
+	if err := json.Unmarshal(b, &v150Probe); err == nil {
+		if v150Probe.LargeMovieBytes != nil {
+			c.LargeMovieBytes = max(*v150Probe.LargeMovieBytes, 0)
+		}
+		if v150Probe.LargeSeasonBytes != nil {
+			c.LargeSeasonBytes = max(*v150Probe.LargeSeasonBytes, 0)
+		}
+		if v150Probe.LargeEpisodeBytes != nil {
+			c.LargeEpisodeBytes = max(*v150Probe.LargeEpisodeBytes, 0)
 		}
 	}
 	if saved.FFprobePath != "" {

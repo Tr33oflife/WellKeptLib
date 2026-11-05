@@ -4,14 +4,15 @@
 the folders your media actually lives in and tells you what's
 wrong with the *files* — then helps you fix the layout. It works
 on disk, not through a media-server API: every core tool works
-with no Plex connection at all. (An optional Plex sign-in exists,
-and only saves you typing folder paths.)
+with no Plex connection at all. (An optional Plex sign-in exists:
+it saves you typing folder paths — and, new in 1.5.0, it can
+delete files *through* Plex on servers you own.)
 
 One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.4.1
+- **Version:** 1.5.0
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -96,7 +97,25 @@ create, collisions, and skips, before anything is written:**
   Findings have guarded per-file actions (open location,
   delete) with an audit log.
 - **Inventory by size.** Movies, series, and seasons sorted
-  by size, per-root totals, biggest files overall.
+  by size, per-root totals, biggest files overall. New in
+  1.5.0: a **Sizes view** in the Library tab rolls shows and
+  seasons up by total size (episode counts, largest and
+  average episode), and three settings — what counts as a
+  **large** movie file (6 GB), season (20 GB), or episode
+  file (3 GB) — flag anything at or over its number with a
+  LARGE badge and a `large` field in the exports. Set a
+  number to 0 to turn that flag off; flags are computed
+  when you look, so changing a number re-flags everything
+  at once.
+- **Catalog export (1.5.0).** One JSON document of the
+  whole library, built to be handed to an AI (or read
+  yourself): every show nested into its seasons and
+  episodes, every movie, and — in their own sections,
+  never dropped — the extras and the files the app
+  couldn't identify, each with its reason. A show's total
+  counts its episode files only; extras are listed
+  separately and their size is not folded in. The
+  thresholds used are recorded in the document itself.
 - **Missing episodes.** A gaps view lists episodes that are
   absent between the ones you have, per series and season.
 - **Subtitle coverage.** Per-show / per-library coverage for
@@ -109,6 +128,20 @@ create, collisions, and skips, before anything is written:**
   library (summary, duplicates, findings, coverage, gaps),
   downloadable as a sectioned CSV or a self-contained HTML
   page (no scripts, no external references).
+- **Delete via Plex (1.5.0, optional).** From the Health
+  tab's Plex area: matched files can be deleted *through
+  Plex itself*, so Plex removes the file and its database
+  stays in sync. It only exists when the preflight passes —
+  you're signed in, the connected server is **owned** by
+  your account, and **"Allow media deletion"** is enabled
+  on it (the app reads that setting; it never changes it).
+  The default unit is the one media version you picked —
+  in a duplicate group, one click can never take every
+  copy; deleting a whole item is a separate, explicit
+  choice the confirm lists in red. Files that don't match
+  a Plex item get no button and no fallback to the
+  file-level delete. Every attempt, success or failure,
+  is appended to a local audit log (`plex-delete-actions.json`).
 - **Scan history.** Every completed scan is recorded (up to
   50) with a delta against the previous one — added, removed,
   and changed files — with missing roots handled honestly
@@ -315,7 +348,8 @@ to the internet.
 - **Your data stays in one folder** (`~/.local/share/plex-file-manager`
   on Linux, `%LOCALAPPDATA%\PlexFileManager` on Windows):
   settings, scan cache, exclusions, organize undo manifests,
-  and the delete audit log. It survives updates and is never
+  and the delete audit logs (file deletes and Plex deletes).
+  It survives updates and is never
   touched by the installer except a timestamped backup of
   `config.json` during an update.
 - **Plex tokens:** the connected server's token is stored in
@@ -324,6 +358,15 @@ to the internet.
   kept in memory only, unless you explicitly tick "Remember my
   sign-in", in which case it is stored in that same file. No
   token is ever returned by any API response.
+- **Plex writes — exactly one kind (1.5.0):** apart from the
+  delete below, everything the app does with Plex is reads.
+  **Delete via Plex** is the single exception: a DELETE
+  request to *your own* server, for an item you picked, only
+  after the preflight above passes and you confirm the exact
+  list. The Plex module's discipline is amended in writing
+  in its source header for this one named slice — there is
+  no other write path, and a failed Plex delete never falls
+  back to deleting the file directly.
 - **OpenSubtitles credentials:** if you configure them, your
   API key and account login live in `opensubtitles.json` in
   the data folder (permissions 0600), on the same pattern.
@@ -332,7 +375,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.4.1 binaries. Three disclosed divergences — in test
+  1.5.0 binaries. Three disclosed divergences — in test
   files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
@@ -410,49 +453,64 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.4.1)
+## Verification (what was actually checked for 1.5.0)
 
-- Go test suite: **310 top-level tests, all passing**,
+- Go test suite: **326 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (310 PASS, 0 FAIL);
+  re-run on this published tree (326 PASS, 0 FAIL);
   `go vet` and `gofmt` clean; the race detector is clean
-  (304 carried + 6 new pack/label tests; two pre-existing
-  expectations deliberately updated — the sample label
-  split, disclosed in the release notes).
+  (310 carried + 16 new: catalog shape/totals/order, the
+  threshold settings and flags, the sizes roll-ups, Plex
+  ID retention, the preflight truth table, matches, and
+  the delete guardrails).
 - **Gates:** the 843-basename parser regression and the
-  1.4.0 predicate sweep pass untouched (no parser or
-  diversion change). The pack fixtures — carrying the
-  real file lists from the preserved problems exports —
-  refuse exactly **60** files under the 1.4.0 rule and
-  link all 60 under 1.4.1 (36 + 23 + 1, counted name by
-  name), each pack ending with zero not-identified; a
-  genuinely two-series pack still refuses on both
-  versions. In this published tree both corpus tests
-  run in full; in a standalone clone they skip — see
-  the transparency note.
-- Page checks: 173 ids looked up / 204 defined, all
-  resolve (the page is byte-identical to 1.4.0); the
-  Node render harness passes **181/181** online (stub
-  CDN seam), with offline / blank / disabled scenarios
-  green as well.
-- Shipped-binary smoke: **115/115** — the full carried
-  battery (baseline 11/2/2/6, incident replay, link
-  mode and the job flow, themes, icons, report/exports,
-  CLI codes, the 1.3.0–1.4.0 checks) plus 4 new 1.4.1
-  checks: a pack-shaped tree over HTTP — a series extra
-  landing in the series' extras folder, a movie extra in
-  the movie's, and the export's only not-found entry
-  carrying the new sample label. The public package's
-  extracted binary passes the same smoke, and the
-  installer walk passes **12/12** (with the honest
-  limit that `systemctl` is shimmed in the sandbox
-  walks).
+  1.4.0 predicate sweep pass untouched — classification
+  did not change in this release, and every pinned
+  1.3.x–1.4.1 flip/refusal stands as it was.
+- **Catalog totals discipline, test-pinned:** a show's
+  total is its episode files only — a fixture show with a
+  90-byte extra against a 150-byte total proves the
+  extra's bytes appear in no show, season, or episode
+  total; extras carry an owner title only when exactly
+  one scanned work shares their folder; unidentified
+  entries carry the parser's own reason strings.
+- **Delete via Plex — verified against mocks only.** No
+  real Plex server was contacted by any test, smoke, or
+  check in this release (a standing rule for this
+  project). Against mock servers: the preflight reads
+  ownership and the deletion setting both ways Plex
+  exposes them and fails closed on anything unknown (and
+  with the preflight not ready, the page renders **no**
+  matches table and **no** delete button — harness-pinned);
+  the version-delete and item-delete request shapes arrive
+  verbatim; a 403 surfaces as "refused" with the server's
+  message, a 400 as an error with status and body excerpt,
+  both audited, neither marked; an unmatched file is
+  refused before any request is issued (the mock records
+  zero deletes for it); a mixed batch reports per-entry
+  outcomes. Your first delete on your own server is the
+  live proof, with the audit log as the record.
+- Page checks: 192 ids looked up / 222 defined, all
+  resolve; the Node render harness passes **191/191**
+  online (stub CDN seam), with offline / blank / disabled
+  scenarios green as well.
+- Shipped-binary smoke: **127/127** — the full carried
+  battery (baseline 11/2/2/6, incident replay, link mode
+  and the job flow, themes, icons, report/exports, CLI
+  codes, the 1.3.0–1.4.1 checks) plus 12 new 1.5.0 checks,
+  including an end-to-end delete against a mock Plex over
+  HTTP (preflight ready, 3 matched / 1 unmatched, exactly
+  one DELETE received, both attempts in the audit log on
+  disk). The public package's extracted binary passes the
+  same smoke, and the installer walk passes **12/12**
+  (with the honest limit that `systemctl` is shimmed in
+  the sandbox walks).
 - Standalone clone proof: a clean copy of this tree,
   with fixtures generated by the shipped
   `fixtures/generate.sh`, passes `go test ./...` —
-  **308 PASS, 0 FAIL, 2 SKIP** (the two corpus tests,
-  which need the unshipped real-export corpus; see the
-  transparency note).
+  **324 PASS, 0 FAIL, 2 SKIP** (the two corpus tests, which need the
+  unshipped real-export corpus; see the transparency
+  note).
 - **Default-theme equality, measured:** a headless-Chrome
   computed-style probe of 17 chrome elements against a
   running 1.1.1 binary and the 1.2.0 default found them
@@ -593,6 +651,69 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.5.0
+
+Three additions, specced together as one release: know
+what you have, see what it weighs, and — when you choose —
+remove it through Plex itself.
+
+- **Catalog export.** The Library toolbar's **Export
+  catalog** downloads one JSON document
+  (`wellkeptlib.catalog` v1): shows nested into seasons
+  and episodes (multi-episode files once, with their full
+  episode list), movies flat, and extras and unidentified
+  files in their own sections with their classifications
+  and reasons — nothing scanned is silently dropped, and
+  the document's own `notes` state that identity is parsed
+  from filenames, not read from Plex metadata. Totals are
+  honest about what they count: a show's total is its
+  episode files; its extras are listed separately and
+  their bytes are in no total. Order is deterministic, and
+  the summary records the large thresholds used.
+- **Sizes view + large flags.** The Library tab gains a
+  Files|Sizes toggle. Sizes rolls shows up by total bytes
+  (season and episode-file counts, largest and average
+  episode, a count of large seasons) with expandable
+  per-season totals; episodes list size-sorted. Three new
+  settings (Settings → Sizes) hold what counts as **large**
+  — a movie file (6 GB), a season (20 GB), an episode file
+  (3 GB), stored as exact byte counts. At-or-over earns a
+  LARGE badge in the Library and a `large` flag in the
+  JSON/CSV exports (an additive field/column — the flat
+  exports are otherwise unchanged). The flags are computed
+  at view/export time by one helper and never stored on
+  items, so a threshold change re-flags the whole library
+  with no rescan; an explicit 0 turns a flag off, and
+  Reset tuning leaves the three numbers alone.
+- **Delete via Plex.** The optional Plex module gains
+  exactly one write, and its source header says so in
+  writing: everything else stays reads. The Health tab's
+  Plex area gains a delete panel that exists only when a
+  live **preflight** passes — signed in, the connected
+  server **owned** by your account, and **"Allow media
+  deletion"** enabled on that server (read from the
+  server both ways Plex exposes it; anything unknown
+  fails closed; the app never changes the setting). The
+  cross-check now also retains each item's Plex IDs, so a
+  scanned file can be matched to the exact media version
+  it is. Deleting defaults to **that version only**
+  (`DELETE /library/metadata/{id}/media/{mediaId}`); a
+  whole-item delete is a per-entry scope you set
+  explicitly, and the batch confirm lists those rows in
+  red, naming that ALL versions are removed. Unmatched
+  files are refused before any request, with their
+  reason; there is no fallback to the file-level deletes.
+  Server refusals and errors surface with their status
+  and message; every attempt is appended to
+  `plex-delete-actions.json`; successful rows are marked
+  deleted-pending-rescan (scan data itself is untouched —
+  a rescan is the refresh, as with everything file-true
+  in this app). Verified end-to-end against mock Plex
+  servers only — see the verification section.
+- Nothing about classification changed: the parser,
+  planners, and every pinned outcome from 1.3.0–1.4.1
+  are exactly as they were.
 
 ## Release notes — 1.4.1
 

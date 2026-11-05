@@ -478,7 +478,25 @@ try {
       <span style="flex:1"></span>
       <a href="api/export.json" id="link-export-json">Export JSON</a>
       <a href="api/export.csv" id="link-export-csv">Export CSV</a>
+      <!-- Catalog export (v1.5.0): the wellkeptlib.catalog
+           document — every show/season/episode/movie nested,
+           extras and unidentified in their own sections. The
+           poll disables it while the library is empty (the
+           "run a scan" affordance), like the spec asks. -->
+      <a href="api/export/catalog" id="link-export-catalog" title="One JSON document of the whole library, nested by show and season — built to be read by an AI">Export catalog</a>
     </div>
+    <!-- Sizes view (v1.5.0): a mode of this tab, not a new
+         one — roll-ups by show and season with the large
+         flags from Settings → Sizes. The file list stays
+         the default; the toggle just swaps which block is
+         visible. -->
+    <div class="toolbar" style="margin-top:2px">
+      <span class="dim small">View:</span>
+      <button class="small" id="btn-lib-view-files">Files</button>
+      <button class="small" id="btn-lib-view-sizes">Sizes</button>
+      <span class="dim small" id="lib-view-note"></span>
+    </div>
+    <div id="sizes-block" style="display:none"></div>
     <div id="series-block"></div>
     <!-- Missing episodes (v0.9.0): gap rows derived from the
          parsed episode identities — read-only information
@@ -624,6 +642,25 @@ try {
       <button id="btn-missing" title="Connect Plex in Settings first">Check for Plex items missing on disk</button>
       <span class="dim small" id="missing-status" style="margin-left:10px"></span>
       <div id="missing-result" style="margin-top:10px"></div>
+    </div>
+    <!-- Delete via Plex (v1.5.0): deletion through Plex's own
+         channels — Plex removes the file and keeps its
+         database in sync. The panel is gated on a preflight
+         (connected + this account OWNS the server + the
+         server allows media deletion): until every check
+         passes there is no delete button at all, and the app
+         never changes the server's setting — it only reads
+         it. Files Plex doesn't know get no delete here, and
+         nothing in this panel ever falls back to deleting
+         the file directly. -->
+    <div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-bottom:16px">
+      <h2 style="margin-bottom:4px">Delete via Plex</h2>
+      <p class="dim small" style="margin:0 0 10px">Delete files <i>through</i> Plex: Plex removes the file from disk itself, so no ghost entries are left behind. Works only when the signed-in account owns the server and the server has “Allow media deletion” on (Plex Settings → Library) — the check below reads both; it never changes them.</p>
+      <button id="btn-plex-del-check">Check delete readiness &amp; find deletable files</button>
+      <span class="dim small" id="plex-del-status" style="margin-left:10px"></span>
+      <div id="plex-del-preflight" style="margin-top:10px"></div>
+      <div id="plex-del-result" style="margin-top:10px"></div>
+      <div id="plex-del-confirm" style="display:none;border:1px solid var(--red);border-radius:10px;padding:12px 14px;background:var(--panel2);margin-top:12px"></div>
     </div>
     <!-- Per-finding actions (Open location / Delete): the note
          line reports outcomes, the confirm panel is the delete
@@ -781,6 +818,22 @@ try {
       <div class="small"><input type="checkbox" id="cfg-kofi-enabled" style="vertical-align:-2px"> Show Ko-fi Donate button</div>
       <label>Ko-fi username</label><input id="cfg-kofi" style="width:320px" placeholder="your-ko-fi-username">
       <p class="dim small" style="margin:6px 0 0;max-width:760px">When the toggle is on, the floating Donate button appears when the app is online and silently stays away when it isn't — no error, nothing broken offline. Toggle off, and the app never even tries to load the button, whatever the connection. Leave the username blank to turn the button off entirely. A change takes effect on the next page load.</p>
+    </div>
+    <!-- Sizes (v1.5.0): what counts as "large" — a movie file,
+         a whole season, a single episode. Preferences, not
+         tuning (Reset tuning leaves them alone). Shown in GB,
+         stored as bytes; 0 turns that flag off entirely.
+         Flags are computed from these numbers when a view or
+         export renders, so a change re-flags instantly with
+         no rescan. -->
+    <div style="margin-bottom:24px;border-bottom:1px solid var(--line);padding-bottom:18px">
+      <h2>Sizes — what counts as large</h2>
+      <div style="display:flex;gap:18px;flex-wrap:wrap">
+        <span><label>Movie file (GB)</label><input id="cfg-large-movie-gb" type="number" step="0.5" min="0" style="width:110px"></span>
+        <span><label>Season total (GB)</label><input id="cfg-large-season-gb" type="number" step="0.5" min="0" style="width:110px"></span>
+        <span><label>Episode file (GB)</label><input id="cfg-large-episode-gb" type="number" step="0.5" min="0" style="width:110px"></span>
+      </div>
+      <p class="dim small" style="margin:6px 0 0;max-width:760px">A file or season at or over its number gets a <b>LARGE</b> badge in the Library (Files and Sizes views) and a <span class="mono">large</span> flag in the exports. Set a number to 0 to turn that flag off. Defaults: movie 6 GB, season 20 GB, episode 3 GB.</p>
     </div>
     <!-- Link library (v1.4.0): the three Organize link-mode
          behaviors the owner ordered — extras link, specials
@@ -1003,6 +1056,14 @@ const api = {
   testPlex:      (url, token) => jfetch("api/plex/test", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({url: url || "", token: token || ""})}),
   plexSections:  () => jfetch("api/plex/sections"),
   plexMissing:   () => jfetch("api/plex/missing", {method:"POST"}),
+  // Sizes view (v1.5.0) — the roll-up projection.
+  sizes:         () => jfetch("api/sizes"),
+  // Delete via Plex (v1.5.0) — preflight (check-only),
+  // matches (the cross-check matched against the scan), and
+  // the guarded batch delete. Outcomes come back in-band.
+  plexPreflight: () => jfetch("api/plex/preflight", {method:"POST"}),
+  plexMatches:   () => jfetch("api/plex/matches", {method:"POST"}),
+  plexDelete:    (items) => jfetch("api/plex/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({items})}),
   // Plex sign-in (v0.3.1; approval link v0.3.2) — plex.tv PIN
   // flow: begin returns an approval URL for Plex's own page (the
   // PIN code rides inside it, never displayed), poll reports
@@ -1310,6 +1371,17 @@ async function refreshState(){
   // the CURRENT setting (state.embedded_audit), so it appears the
   // moment the switch is off, even before the next scan runs.
   $("sub-audit-off-notice").style.display = (!sc.audit_pending && st.embedded_audit === false) ? "block" : "none";
+  // Catalog export (v1.5.0): with nothing scanned there is
+  // no catalog to read — the link dims and stops answering
+  // until a scan lands (the other exports stay as they are).
+  const catLink = $("link-export-catalog");
+  if (catLink){
+    const empty = !(sum.media_count > 0);
+    catLink.style.pointerEvents = empty ? "none" : "";
+    catLink.style.opacity = empty ? "0.45" : "";
+    catLink.title = empty ? "Run a scan first — the catalog lists what a scan found" :
+      "One JSON document of the whole library, nested by show and season — built to be read by an AI";
+  }
   $("n-sub").textContent = sum.subtitle_findings ? "(" + sum.subtitle_findings + ")" : "";
   $("n-dup").textContent = sum.duplicate_groups ? "(" + sum.duplicate_groups + ")" : "";
   $("n-health").textContent = sum.health_findings ? "(" + sum.health_findings + ")" : "";
@@ -1321,11 +1393,12 @@ async function refreshLibrary(){
   const [lib, ser] = await Promise.all([api.library($("lib-sort").value, $("lib-order").value), api.series()]);
   renderGaps();
   const items = lib.items || [];
-  $("lib-empty").style.display = items.length ? "none" : "block";
+  $("lib-empty").style.display = (items.length || libViewMode === "sizes") ? "none" : "block";
   document.querySelector("#lib-table tbody").innerHTML = items.map(it => {
     const se = it.kind === "episode" ? ("S" + String(it.season||0).padStart(2,"0") + "E" + (it.episodes||[]).map(e => String(e).padStart(2,"0")).join(",E")) : "";
     return '<tr class="' + (it.excluded ? "excluded-row" : "") + '"><td><b>' + esc(it.title) + "</b>" +
       (it.edition ? ' <span class="badge b-purple">' + esc(it.edition) + "</span>" : "") +
+      (it.large ? ' <span class="badge b-red">LARGE</span>' : "") +
       (it.excluded ? ' <span class="badge b-amber">excluded: ' + esc((it.exclusion_scopes||[]).join(", ")) + "</span>" : "") +
       '</td><td>' + esc(it.kind) + '</td><td>' + (it.year || "") + (se ? ' <span class="mono">' + se + "</span>" : "") +
       "</td><td>" + fmtBytes(it.size) + "</td><td>" + fmtDur(it.duration) + "</td><td>" + esc(it.resolution||"") +
@@ -1346,6 +1419,87 @@ $("lib-sort").addEventListener("change", refreshLibrary);
 $("lib-order").addEventListener("change", refreshLibrary);
 $("link-export-json").href = BASE + "api/export.json";
 $("link-export-csv").href = BASE + "api/export.csv";
+$("link-export-catalog").href = BASE + "api/export/catalog";
+
+/* ================= Sizes view (v1.5.0) =================
+   A mode of the Library tab: shows and seasons rolled up by
+   size, with the large flags from Settings → Sizes. The
+   projection is server-side (/api/sizes) so the numbers and
+   flags are exactly the catalog's; this block only renders.
+   Expansion state lives here (title -> open seasons). */
+let libViewMode = "files";
+const sizesOpenShows = new Set();
+const sizesOpenSeasons = new Set();
+
+function setLibView(mode){
+  libViewMode = mode;
+  const sizes = mode === "sizes";
+  $("sizes-block").style.display = sizes ? "block" : "none";
+  $("series-block").style.display = sizes ? "none" : "";
+  $("lib-gaps").style.display = sizes ? "none" : "";
+  $("lib-table").style.display = sizes ? "none" : "";
+  $("lib-empty").style.display = "none";
+  $("lib-view-note").textContent = sizes ? "Shows and seasons by size — flags use the thresholds in Settings → Sizes." : "";
+  if (sizes) renderSizes();
+  else refreshLibrary();
+}
+$("btn-lib-view-files").addEventListener("click", () => setLibView("files"));
+$("btn-lib-view-sizes").addEventListener("click", () => setLibView("sizes"));
+
+async function renderSizes(){
+  const box = $("sizes-block");
+  let rep;
+  try{ rep = await api.sizes(); }
+  catch(e){ box.innerHTML = '<p style="color:var(--red)">' + esc(e.message) + "</p>"; return; }
+  const thr = rep.thresholds || {};
+  const gb = b => b > 0 ? (Math.round(b / 1073741824 * 10) / 10) + " GB" : "off";
+  const largeMovies = (rep.movies || []).filter(m => m.large).length;
+  let html = '<p class="dim small" style="margin-top:0">Large means at or over: movie ' + gb(thr.movie_bytes || 0) +
+    " · season " + gb(thr.season_bytes || 0) + " · episode " + gb(thr.episode_bytes || 0) +
+    ' — change them in Settings → Sizes. Movies are per-file: <b>' + (rep.movies || []).length + " movie(s), " + largeMovies +
+    ' large</b> — the Files view above, sorted by size, is their list.</p>';
+  const shows = rep.shows || [];
+  if (!shows.length){
+    box.innerHTML = html + '<div class="empty">No episodes yet — run a scan.</div>';
+    return;
+  }
+  html += "<table><thead><tr><th></th><th>Show</th><th>Total size</th><th>Seasons</th><th>Episode files</th><th>Largest episode</th><th>Average episode</th><th>Large seasons</th></tr></thead><tbody>";
+  shows.forEach((sh, si) => {
+    const open = sizesOpenShows.has(sh.title);
+    html += '<tr><td><button class="small" data-sizes-show="' + si + '">' + (open ? "▾" : "▸") + '</button></td><td><b>' + esc(sh.title) + "</b>" +
+      (sh.year ? ' <span class="dim">(' + sh.year + ")</span>" : "") + "</td><td>" + fmtBytes(sh.total_bytes) + "</td><td>" + sh.season_count +
+      "</td><td>" + sh.episode_files + "</td><td>" + fmtBytes(sh.largest_episode_bytes) + "</td><td>" + fmtBytes(sh.avg_episode_bytes) +
+      "</td><td>" + (sh.large_seasons ? '<span class="badge b-red">' + sh.large_seasons + " large</span>" : "0") + "</td></tr>";
+    if (open){
+      (sh.seasons || []).forEach((sn, ni) => {
+        const key = sh.title + "#" + sn.season;
+        const sOpen = sizesOpenSeasons.has(key);
+        html += '<tr><td></td><td style="padding-left:26px"><button class="small" data-sizes-season="' + esc(key) + '">' + (sOpen ? "▾" : "▸") + "</button> Season " + sn.season +
+          (sn.large ? ' <span class="badge b-red">LARGE</span>' : "") + "</td><td>" + fmtBytes(sn.total_bytes) + "</td><td></td><td>" + sn.episode_files +
+          "</td><td>" + fmtBytes(sn.largest_episode_bytes) + "</td><td></td><td></td></tr>";
+        if (sOpen){
+          (sn.episodes || []).forEach(ep => {
+            html += '<tr><td></td><td class="mono dim" style="padding-left:52px">' + esc(ep.path.split("/").pop()) +
+              (ep.large ? ' <span class="badge b-red">LARGE</span>' : "") + "</td><td>" + fmtBytes(ep.size_bytes) +
+              "</td><td></td><td>" + (ep.episodes || []).map(e => "E" + String(e).padStart(2, "0")).join(", ") + "</td><td></td><td></td><td></td></tr>";
+          });
+        }
+      });
+    }
+  });
+  html += "</tbody></table>";
+  box.innerHTML = html;
+  box.querySelectorAll("[data-sizes-show]").forEach(btn => btn.addEventListener("click", () => {
+    const sh = shows[parseInt(btn.dataset.sizesShow, 10)];
+    if (sizesOpenShows.has(sh.title)) sizesOpenShows.delete(sh.title); else sizesOpenShows.add(sh.title);
+    renderSizes();
+  }));
+  box.querySelectorAll("[data-sizes-season]").forEach(btn => btn.addEventListener("click", () => {
+    const key = btn.dataset.sizesSeason;
+    if (sizesOpenSeasons.has(key)) sizesOpenSeasons.delete(key); else sizesOpenSeasons.add(key);
+    renderSizes();
+  }));
+}
 
 /* ================= Subtitles ================= */
 async function refreshSubtitles(){
@@ -2096,6 +2250,12 @@ async function refreshSettings(){
   // Link library (v1.4.0): the three link-mode switches,
   // filled with the same !== false idiom (absent = ON,
   // matching the server default).
+  // Sizes (v1.5.0): bytes -> GB for display (one decimal at
+  // most; the stored byte value is what the server saved).
+  const gbOf = b => Math.round((b || 0) / 1073741824 * 10) / 10;
+  if (document.activeElement !== $("cfg-large-movie-gb")) $("cfg-large-movie-gb").value = gbOf(currentCfg && currentCfg.large_movie_bytes);
+  if (document.activeElement !== $("cfg-large-season-gb")) $("cfg-large-season-gb").value = gbOf(currentCfg && currentCfg.large_season_bytes);
+  if (document.activeElement !== $("cfg-large-episode-gb")) $("cfg-large-episode-gb").value = gbOf(currentCfg && currentCfg.large_episode_bytes);
   $("cfg-link-extras").checked = !currentCfg || currentCfg.link_extras !== false;
   $("cfg-assign-special-numbers").checked = !currentCfg || currentCfg.assign_special_numbers !== false;
   $("cfg-allow-yearless-movies").checked = !currentCfg || currentCfg.allow_yearless_movies !== false;
@@ -2174,6 +2334,11 @@ $("btn-cfg-save").addEventListener("click", async () => {
     embedded_audit: $("cfg-embedded-audit").checked,
     kofi_enabled: $("cfg-kofi-enabled").checked,
     kofi_username: $("cfg-kofi").value.trim(),
+    // Sizes (v1.5.0): GB in the form, bytes on the wire. A
+    // field left blank keeps the current stored value.
+    large_movie_bytes: (() => { const v = parseFloat($("cfg-large-movie-gb").value); return isNaN(v) ? (currentCfg.large_movie_bytes || 0) : Math.round(Math.max(0, v) * 1073741824); })(),
+    large_season_bytes: (() => { const v = parseFloat($("cfg-large-season-gb").value); return isNaN(v) ? (currentCfg.large_season_bytes || 0) : Math.round(Math.max(0, v) * 1073741824); })(),
+    large_episode_bytes: (() => { const v = parseFloat($("cfg-large-episode-gb").value); return isNaN(v) ? (currentCfg.large_episode_bytes || 0) : Math.round(Math.max(0, v) * 1073741824); })(),
     // Link library (v1.4.0) rides the same save.
     link_extras: $("cfg-link-extras").checked,
     assign_special_numbers: $("cfg-assign-special-numbers").checked,
@@ -2197,7 +2362,7 @@ $("btn-cfg-save").addEventListener("click", async () => {
    v0.8.0: the embedded-audit switch is a tuning knob too — the
    reset turns it back ON, and the confirm names it. */
 $("btn-cfg-reset-tuning").addEventListener("click", async () => {
-  if (!confirm("Reset the tuning settings (workers, confidence threshold, duration tolerances, tiny-file floor, probe/subtitle timeouts and track cap, and the embedded subtitle audit switch — back ON) to their defaults? Your scan roots, exclusions, and ffprobe/ffmpeg paths are not changed.")) return;
+  if (!confirm("Reset the tuning settings (workers, confidence threshold, duration tolerances, tiny-file floor, probe/subtitle timeouts and track cap, and the embedded subtitle audit switch — back ON) to their defaults? Your scan roots, exclusions, ffprobe/ffmpeg paths, and Sizes thresholds are not changed.")) return;
   try{ currentCfg = await api.resetTuning(); await refreshSettings(); $("cfg-saved").textContent = "tuning reset to defaults ✓"; }
   catch(e){ alert(e.message); }
 });
@@ -2610,6 +2775,128 @@ $("btn-missing").addEventListener("click", async () => {
         "</tbody></table>" : "");
   }catch(e){ st.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>"; }
 });
+
+/* ----- Delete via Plex (v1.5.0) -----
+   Flow: one button runs the cross-check + preflight. The
+   preflight renders first and the matched-file table (the
+   only delete affordance in the app for this mechanism)
+   renders ONLY when it passes. Scope defaults to the
+   file's own version; "whole item" is an explicit per-row
+   choice. Confirm is a panel listing everything (never a
+   browser confirm), one panel for single and batch alike. */
+let plexDelMatches = [];
+
+$("btn-plex-del-check").addEventListener("click", async () => {
+  const st = $("plex-del-status"), pfBox = $("plex-del-preflight"), box = $("plex-del-result"), conf = $("plex-del-confirm");
+  let view = null;
+  try{ view = await api.plexSettings(); }catch(e){ /* treated as not connected below */ }
+  if (!view || !view.configured){
+    st.innerHTML = '<span style="color:var(--amber2)">Plex isn\'t connected yet — sign in with Plex in Settings → Plex first.</span>';
+    pfBox.innerHTML = ""; box.innerHTML = ""; conf.style.display = "none";
+    return;
+  }
+  st.textContent = "Asking Plex who owns this server, whether deletion is allowed, and which files it knows…";
+  pfBox.innerHTML = ""; box.innerHTML = ""; conf.style.display = "none";
+  try{
+    const r = await api.plexMatches();
+    st.textContent = "";
+    plexDelMatches = r.matches || [];
+    renderPlexDelPreflight(r.preflight);
+    renderPlexDelMatches(r);
+  }catch(e){ st.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>"; }
+});
+
+function renderPlexDelPreflight(pf){
+  const box = $("plex-del-preflight");
+  if (!pf){ box.innerHTML = ""; return; }
+  const line = (ok, known, label, source) =>
+    '<div class="small">' + (ok ? '<span style="color:var(--green)">✓</span> ' : (known ? '<span style="color:var(--red)">✗</span> ' : '<span style="color:var(--amber2)">?</span> ')) +
+    esc(label) + (source ? ' <span class="dim">(per ' + esc(source) + ')</span>' : "") + "</div>";
+  let html = '<div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin-bottom:8px">' +
+    line(pf.reachable, pf.configured, pf.reachable ? "Connected to " + (pf.server_name || "the Plex server") : "Plex server reachable with this sign-in", "") +
+    line(pf.owned, pf.owned_known, "The signed-in account owns this server", pf.owned_source) +
+    line(pf.deletion_enabled, pf.deletion_known, "“Allow media deletion” is on", pf.deletion_source) +
+    "</div>";
+  if (!pf.ready && (pf.problems || []).length){
+    html += '<div class="small" style="color:var(--amber2)">' + pf.problems.map(esc).join("<br>") + "</div>" +
+      '<div class="small dim" style="margin-top:4px">Until every check passes there is nothing to delete here — on purpose.</div>';
+  }
+  box.innerHTML = html;
+}
+
+function renderPlexDelMatches(r){
+  const box = $("plex-del-result");
+  const pf = r.preflight || {};
+  if (!pf.ready){ box.innerHTML = ""; return; }
+  const rows = plexDelMatches;
+  let html = '<div class="small" style="margin-bottom:8px"><b>' + rows.length + "</b> of <b>" + (r.scanned_files || 0) +
+    "</b> scanned file(s) are known to Plex and can be deleted through it. <b>" + (r.unmatched_files || 0) +
+    "</b> scanned file(s) have no Plex match — they get no delete here, and this panel never deletes a file directly.</div>";
+  if ((r.warnings || []).length) html += '<div class="small" style="color:var(--amber2)">' + r.warnings.map(esc).join("<br>") + "</div>";
+  if (rows.length){
+    html += "<table><thead><tr><th></th><th>Item</th><th>Library</th><th>Versions</th><th>File</th><th>Delete</th></tr></thead><tbody>" +
+      rows.map((m, i) =>
+        "<tr><td>" + (m.deleted_pending_rescan ? "" : '<input type="checkbox" class="plex-del-check" data-i="' + i + '">') + "</td>" +
+        "<td><b>" + esc(m.title) + "</b>" + (m.deleted_pending_rescan ? ' <span class="badge b-amber">deleted via Plex — clears on rescan</span>' : "") + "</td>" +
+        "<td>" + esc(m.section) + "</td><td>" + (m.versions > 1 ? m.versions + " versions" : "1") + '</td>' +
+        '<td class="mono dim">' + esc(m.path) + "</td>" +
+        "<td>" + (m.deleted_pending_rescan ? "" :
+          '<select class="plex-del-scope" data-i="' + i + '"><option value="version">this file\u2019s version</option><option value="item">whole item — ALL versions</option></select>') + "</td></tr>"
+      ).join("") + "</tbody></table>" +
+      '<div class="toolbar" style="margin-top:10px"><button class="small danger" id="btn-plex-del-batch">Delete selected via Plex</button>' +
+      '<span class="dim small" id="plex-del-batch-note"></span></div>';
+  }
+  box.innerHTML = html;
+  const batch = $("btn-plex-del-batch");
+  if (batch) batch.addEventListener("click", () => {
+    const entries = [];
+    box.querySelectorAll(".plex-del-check").forEach(cb => {
+      if (!cb.checked) return;
+      const m = plexDelMatches[parseInt(cb.dataset.i, 10)];
+      const sel = box.querySelector('.plex-del-scope[data-i="' + cb.dataset.i + '"]');
+      entries.push({path: m.path, scope: sel ? sel.value : "version", title: m.title, versions: m.versions});
+    });
+    if (!entries.length){ $("plex-del-batch-note").textContent = "Tick at least one file first."; return; }
+    showPlexDelConfirm(entries);
+  });
+}
+
+// showPlexDelConfirm lists EVERYTHING the batch will do —
+// each file, and for whole-item rows the fact that every
+// version's files go — before anything is sent.
+function showPlexDelConfirm(entries){
+  const conf = $("plex-del-confirm");
+  conf.innerHTML = "<b>Delete through Plex — please check this list.</b>" +
+    '<p class="small" style="margin:6px 0">Plex will remove these files from disk itself and drop them from its library. This cannot be undone from here.</p>' +
+    "<ul class=\"small\" style=\"margin:6px 0 10px;padding-left:18px\">" + entries.map(e =>
+      "<li><b>" + esc(e.title) + "</b> — " + (e.scope === "item"
+        ? '<span style="color:var(--red)">WHOLE ITEM: every version\u2019s files (' + e.versions + ")</span>"
+        : "this file\u2019s version only") +
+      '<div class="mono dim">' + esc(e.path) + "</div></li>").join("") + "</ul>" +
+    '<button class="danger" id="btn-plex-del-confirm">Delete ' + entries.length + " via Plex</button> " +
+    '<button class="small" id="btn-plex-del-cancel">Cancel</button> <span class="small" id="plex-del-outcome"></span>';
+  conf.style.display = "block";
+  $("btn-plex-del-cancel").addEventListener("click", () => { conf.style.display = "none"; });
+  $("btn-plex-del-confirm").addEventListener("click", async () => {
+    const out = $("plex-del-outcome");
+    out.textContent = "Asking Plex…";
+    try{
+      const res = await api.plexDelete(entries.map(e => ({path: e.path, scope: e.scope})));
+      const ok = (res.outcomes || []).filter(o => o.ok).length;
+      out.innerHTML = (res.outcomes || []).map(o =>
+        '<div>' + (o.ok ? '<span style="color:var(--green)">✓ deleted</span> ' : '<span style="color:var(--red)">✗ not deleted</span> ') +
+        esc(o.path) + (o.detail ? ' <span class="dim">— ' + esc(o.detail) + "</span>" : "") + "</div>").join("") +
+        '<div style="margin-top:4px">' + ok + " of " + (res.outcomes || []).length + " deleted. Rows stay listed, marked, until the next scan — the files themselves are already gone.</div>";
+      // Re-run the match fetch so the marks show.
+      try{
+        const r2 = await api.plexMatches();
+        plexDelMatches = r2.matches || [];
+        renderPlexDelPreflight(r2.preflight);
+        renderPlexDelMatches(r2);
+      }catch(e){ /* the outcomes above already say what happened */ }
+    }catch(e){ out.innerHTML = '<span style="color:var(--red)">' + esc(e.message) + "</span>"; }
+  });
+}
 
 /* ================= Organize (v0.3.0) =================
    Preview -> Apply -> Undo, all through api.* (transport separation).

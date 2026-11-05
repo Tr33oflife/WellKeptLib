@@ -272,6 +272,14 @@ type plexServer struct {
 	Name        string
 	AccessToken string
 	Connections []plexConnection
+	// Owned / ClientID (v1.5.0): the resource's owned flag and
+	// its machine identifier, carried for the delete slice's
+	// preflight (plex_delete.go) — when the connected server's
+	// root document does not state ownership itself, the
+	// account's resource list is the other place Plex says
+	// whether this account owns that server.
+	Owned    bool
+	ClientID string
 }
 
 // resourceJSON mirrors one entry of GET /api/v2/resources.
@@ -288,6 +296,9 @@ type resourceJSON struct {
 	AccessToken string           `json:"accessToken"`
 	Provides    stringList       `json:"provides"`
 	Connections []plexConnection `json:"connections"`
+	// Owned / ClientIdentifier (v1.5.0): see plexServer.
+	Owned            bool   `json:"owned"`
+	ClientIdentifier string `json:"clientIdentifier"`
 }
 
 // connectionRank orders connection attempts (v0.3.1 brief): a
@@ -338,7 +349,7 @@ func fetchServers(accountToken, clientID string) ([]plexServer, error) {
 		}
 		conns := append([]plexConnection{}, r.Connections...)
 		sort.SliceStable(conns, func(i, j int) bool { return connectionRank(conns[i]) < connectionRank(conns[j]) })
-		out = append(out, plexServer{Name: r.Name, AccessToken: r.AccessToken, Connections: conns})
+		out = append(out, plexServer{Name: r.Name, AccessToken: r.AccessToken, Connections: conns, Owned: r.Owned, ClientID: r.ClientIdentifier})
 	}
 	return out, nil
 }
