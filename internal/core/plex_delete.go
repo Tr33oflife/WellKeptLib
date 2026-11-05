@@ -57,6 +57,20 @@ package core
 //     scan is what removes it everywhere (the file really
 //     is gone from disk — Plex removed it, or already had).
 //
+// v1.5.2 completes §C.4's record-keeping, the four points
+// RESULTS-1.5.1 reported as open: the confirm payload now
+// carries the SERVER each entry will be deleted from and
+// the SIZE(S) of the file(s) it will remove (§C.4's "title,
+// server, file path(s), size(s)"); every audit record names
+// its server (§C.4's audit field list); the audit is read
+// back and appears in History (PlexDeleteActions,
+// GET /api/plex/delete-actions); and a 403 re-reads the
+// preflight facts and names the one that changed (§C.4's
+// "(say which preflight fact changed)") — or says plainly
+// that every readable check still passes. Delete semantics
+// are exactly v1.5.0 + v1.5.1's: no request path, scope
+// rule, or outcome class moved.
+//
 // Token secrecy and transport separation are unchanged: the
 // views below have no token field, and no method takes or
 // returns HTTP types.
@@ -171,6 +185,34 @@ func runPlexPreflight(p plexSettings, accountToken string) PlexPreflight {
 	return pf
 }
 
+// changedPreflightFact phrases a FRESH preflight as the
+// one fact a 403 turns on (§C.4: "say which preflight fact
+// changed"). The facts are checked in gate order —
+// reachable, owned, deletion enabled — and the first one
+// that no longer holds is named. When the fresh preflight
+// is Ready (every readable fact still holds), the sentence
+// says exactly that: the server refused although the
+// checks the app can read all still pass. Pure: a
+// preflight in, a sentence out.
+func changedPreflightFact(now PlexPreflight) string {
+	switch {
+	case !now.Configured:
+		return "What changed: Plex is no longer configured in the app."
+	case !now.Reachable:
+		return "What changed: the server no longer answers this sign-in — it did when this batch was checked."
+	case now.OwnedKnown && !now.Owned:
+		return "What changed: the signed-in account no longer owns this server."
+	case !now.OwnedKnown:
+		return "What changed: the app can no longer confirm the signed-in account owns this server."
+	case now.DeletionKnown && !now.DeletionEnabled:
+		return "What changed: “Allow media deletion” is now turned off on the server (in Plex: Settings > Library, advanced)."
+	case !now.DeletionKnown:
+		return "What changed: the app can no longer confirm “Allow media deletion” is on for this server."
+	default:
+		return "Every check still passes — signed in, the account owns the server, and “Allow media deletion” is on — but Plex refused anyway."
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Matching
 // ---------------------------------------------------------------------------
@@ -185,19 +227,39 @@ type plexMatch struct {
 	RatingKey string
 	MediaID   string
 	Versions  int // distinct media versions the item has
+	// Server / Size (v1.5.2, §C.4's confirmation fields):
+	// the connected server's name as the app knows it, and
+	// the size of the scanned file this match is built on —
+	// the scan item's own retained size, the file a version
+	// delete removes.
+	Server string
+	Size   int64
+}
+
+// PlexItemFile is one file of a matched Plex item: a path
+// and its size, both from the scan the matches were built
+// against. An item-scope delete removes every one of these.
+type PlexItemFile struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
 }
 
 // PlexFileMatch is the matches view's row for one matched
-// scanned file.
+// scanned file. It is also the confirm payload's source:
+// the batch confirm renders title, server, file path(s)
+// and size(s) from these fields (§C.4).
 type PlexFileMatch struct {
-	Path                 string `json:"path"`
-	Title                string `json:"title"`
-	Type                 string `json:"type"`
-	Section              string `json:"section"`
-	RatingKey            string `json:"rating_key"`
-	MediaID              string `json:"media_id"`
-	Versions             int    `json:"versions"`
-	DeletedPendingRescan bool   `json:"deleted_pending_rescan"`
+	Path                 string         `json:"path"`
+	Title                string         `json:"title"`
+	Type                 string         `json:"type"`
+	Section              string         `json:"section"`
+	RatingKey            string         `json:"rating_key"`
+	MediaID              string         `json:"media_id"`
+	Versions             int            `json:"versions"`
+	Server               string         `json:"server,omitempty"`
+	Size                 int64          `json:"size"`
+	ItemFiles            []PlexItemFile `json:"item_files"`
+	DeletedPendingRescan bool           `json:"deleted_pending_rescan"`
 }
 
 // PlexMatchResult is the PlexMatches payload: the preflight
@@ -252,10 +314,20 @@ func (s *Service) PlexMatches() (PlexMatchResult, error) {
 		}
 		set[it.MediaID] = true
 	}
+	// The server every match belongs to (§C.3: the match
+	// records which server it came from) — the name the
+	// server calls itself in its root document, else the
+	// name held in the saved settings.
+	serverName := preflight.ServerName
+	if serverName == "" {
+		serverName = p.ServerName
+	}
 	s.mu.Lock()
 	scanned := map[string]bool{}
+	sizes := map[string]int64{}
 	for _, it := range s.results.Items {
 		scanned[it.Path] = true
+		sizes[it.Path] = it.Size
 	}
 	snapshot := map[string]*plexMatch{}
 	for _, it := range paths {
@@ -270,6 +342,7 @@ func (s *Service) PlexMatches() (PlexMatchResult, error) {
 			Path: local, Title: displayTitle(it), Type: it.Type,
 			Section: titles[it.SectionKey], RatingKey: it.RatingKey,
 			MediaID: it.MediaID, Versions: len(versions[it.RatingKey]),
+			Server: serverName, Size: sizes[local],
 		}
 	}
 	s.plexMatchByPath = snapshot
@@ -285,11 +358,27 @@ func (s *Service) PlexMatches() (PlexMatchResult, error) {
 		keys = append(keys, path)
 	}
 	sort.Strings(keys)
+	// Every version's files per item (v1.5.2): the confirm
+	// for an item-scope entry lists each file it removes,
+	// with sizes — all of them are matches in this snapshot.
+	itemFiles := map[string][]PlexItemFile{}
 	for _, path := range keys {
 		m := snapshot[path]
+		if m.RatingKey == "" {
+			continue
+		}
+		itemFiles[m.RatingKey] = append(itemFiles[m.RatingKey], PlexItemFile{Path: m.Path, Size: m.Size})
+	}
+	for _, path := range keys {
+		m := snapshot[path]
+		files := itemFiles[m.RatingKey]
+		if files == nil {
+			files = []PlexItemFile{}
+		}
 		res.Matches = append(res.Matches, PlexFileMatch{
 			Path: m.Path, Title: m.Title, Type: m.Type, Section: m.Section,
 			RatingKey: m.RatingKey, MediaID: m.MediaID, Versions: m.Versions,
+			Server: m.Server, Size: m.Size, ItemFiles: files,
 			DeletedPendingRescan: deleted[path],
 		})
 	}
@@ -353,9 +442,15 @@ type PlexDeleteAction struct {
 	Scope     string `json:"scope"` // "version" | "item"
 	RatingKey string `json:"rating_key,omitempty"`
 	MediaID   string `json:"media_id,omitempty"`
-	Result    string `json:"result"` // "deleted" | "resolved" | "refused" | "error"
-	Status    int    `json:"status,omitempty"`
-	Detail    string `json:"detail,omitempty"`
+	// Server (v1.5.2, §C.4's audit field list): the server
+	// the delete was issued against, named as the app knows
+	// it. omitempty on purpose: audit files written by
+	// v1.5.0/v1.5.1 have no such field and must read back
+	// exactly as they were written.
+	Server string `json:"server,omitempty"`
+	Result string `json:"result"` // "deleted" | "resolved" | "refused" | "error"
+	Status int    `json:"status,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // appendPlexDeleteActionLocked appends one record to the
@@ -389,6 +484,28 @@ func (s *Service) auditPlexDelete(rec PlexDeleteAction) error {
 	return s.appendPlexDeleteActionLocked(rec)
 }
 
+// PlexDeleteActions reads the delete audit back, newest
+// first — the read path §C.4's "appears in History" names
+// (v1.5.2; GET /api/plex/delete-actions). A missing or
+// unparseable log is an honest empty list, never an error:
+// the History surface renders its empty state from it.
+// Entries written before v1.5.2 simply carry no server.
+func (s *Service) PlexDeleteActions() []PlexDeleteAction {
+	out := []PlexDeleteAction{}
+	b, err := os.ReadFile(filepath.Join(s.dataDir, "plex-delete-actions.json"))
+	if err != nil {
+		return out
+	}
+	var list []PlexDeleteAction
+	if err := json.Unmarshal(b, &list); err != nil {
+		return out
+	}
+	for i := len(list) - 1; i >= 0; i-- {
+		out = append(out, list[i])
+	}
+	return out
+}
+
 // markPlexDeletedLocked records a successful delete's local
 // paths as deleted-pending-rescan. Caller holds s.mu.
 func (s *Service) markPlexDeletedLocked(paths ...string) {
@@ -409,6 +526,13 @@ func (s *Service) PlexDelete(entries []PlexDeleteEntry) PlexDeleteResult {
 	preflight := s.PlexPreflight()
 	res := PlexDeleteResult{Preflight: preflight, Outcomes: []PlexDeleteOutcome{}}
 	p := s.plexSnapshot()
+	// The server this batch is issued against (§C.4: the
+	// audit names it) — the preflight's own server name,
+	// else the name in the saved settings.
+	serverName := preflight.ServerName
+	if serverName == "" {
+		serverName = p.ServerName
+	}
 	s.mu.Lock()
 	snapshot := s.plexMatchByPath
 	s.mu.Unlock()
@@ -422,6 +546,7 @@ func (s *Service) PlexDelete(entries []PlexDeleteEntry) PlexDeleteResult {
 		rec := PlexDeleteAction{
 			Time: time.Now().UTC().Format(time.RFC3339),
 			Path: entry.Path, Scope: scope, Result: "refused",
+			Server: serverName,
 		}
 		finish := func() {
 			// Copy the final outcome facts into the audit
@@ -533,11 +658,18 @@ func (s *Service) PlexDelete(entries []PlexDeleteEntry) PlexDeleteResult {
 		case status == 403:
 			// §C.1: deletion not allowed by the server's
 			// options. Surfaced, never worked around.
+			// §C.4 (v1.5.2): the refusal names WHICH
+			// preflight fact changed — the facts are
+			// re-read now (reads only; the app never
+			// writes the setting) and the stale one is
+			// named; if every readable fact still holds,
+			// the detail says that instead of guessing.
 			rec.Result = "refused"
 			out.Status = status
-			out.Detail = "Plex refused the delete (HTTP 403) — media deletion is not allowed for this server/account"
+			out.Detail = "Plex refused the delete (HTTP 403). " +
+				changedPreflightFact(runPlexPreflight(p, s.accountTokenForPreflight()))
 			if body != "" {
-				out.Detail += ": " + truncateDetail(body)
+				out.Detail += " Server said: " + truncateDetail(body)
 			}
 		default:
 			// §C.1's wild failure mode (400 and friends):

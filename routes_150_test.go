@@ -48,7 +48,7 @@ func TestRoutes150(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatalf("catalog body unparseable: %v", err)
 	}
-	if doc.Schema != "wellkeptlib.catalog" || doc.SchemaVersion != 1 || doc.AppVersion != "1.5.1" {
+	if doc.Schema != "wellkeptlib.catalog" || doc.SchemaVersion != 1 || doc.AppVersion != "1.5.2" {
 		t.Errorf("catalog header = %+v", doc)
 	}
 	if doc.Summary.Thresholds.MovieBytes != 6<<30 {

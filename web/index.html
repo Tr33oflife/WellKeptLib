@@ -715,6 +715,9 @@ try {
       <span class="small dim" id="history-note"></span>
     </div>
     <div id="history-body"><div class="empty">No scans recorded yet.</div></div>
+    <h3 style="margin:20px 0 4px">Deletes via Plex</h3>
+    <p class="dim small" style="margin-top:0;max-width:840px">Every delete attempted through Plex (v1.5.0) is recorded — what was asked, which server it went to, and how Plex answered, including the ones it refused. A delete the server reported as already gone counts as resolved.</p>
+    <div id="plex-del-history-body"><div class="empty">No deletes via Plex recorded yet.</div></div>
   </section>
 
   <!-- ================= Organize (v0.3.0) =================
@@ -1064,6 +1067,7 @@ const api = {
   plexPreflight: () => jfetch("api/plex/preflight", {method:"POST"}),
   plexMatches:   () => jfetch("api/plex/matches", {method:"POST"}),
   plexDelete:    (items) => jfetch("api/plex/delete", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({items})}),
+  plexDeleteActions: () => jfetch("api/plex/delete-actions"),
   // Plex sign-in (v0.3.1; approval link v0.3.2) — plex.tv PIN
   // flow: begin returns an approval URL for Plex's own page (the
   // PIN code rides inside it, never displayed), poll reports
@@ -2856,7 +2860,8 @@ function renderPlexDelMatches(r){
       if (!cb.checked) return;
       const m = plexDelMatches[parseInt(cb.dataset.i, 10)];
       const sel = box.querySelector('.plex-del-scope[data-i="' + cb.dataset.i + '"]');
-      entries.push({path: m.path, scope: sel ? sel.value : "version", title: m.title, versions: m.versions});
+      entries.push({path: m.path, scope: sel ? sel.value : "version", title: m.title, versions: m.versions,
+        server: m.server || "", size: m.size, item_files: m.item_files || []});
     });
     if (!entries.length){ $("plex-del-batch-note").textContent = "Tick at least one file first."; return; }
     showPlexDelConfirm(entries);
@@ -2864,24 +2869,29 @@ function renderPlexDelMatches(r){
 }
 
 // showPlexDelConfirm lists EVERYTHING the batch will do —
-// each file, and for whole-item rows the fact that every
-// version's files go — before anything is sent. A
-// single-version item is ALWAYS a whole-item removal
-// (the spec's rule: deleting its only version IS deleting
-// the item), so its row says so in the same red wording
-// even when the row's scope choice said "version".
+// §C.4's four fields per entry: title, server, file
+// path(s), size(s) — and for whole-item rows the fact that
+// every version's files go, each with its size, before
+// anything is sent. A single-version item is ALWAYS a
+// whole-item removal (the spec's rule: deleting its only
+// version IS deleting the item), so its row says so in the
+// same red wording even when the row's scope choice said
+// "version".
 function showPlexDelConfirm(entries){
   const conf = $("plex-del-confirm");
+  const fileLine = f => '<div class="mono dim">' + esc(f.path) + (f.size != null ? " · " + fmtBytes(f.size) : "") + "</div>";
   conf.innerHTML = "<b>Delete through Plex — please check this list.</b>" +
     '<p class="small" style="margin:6px 0">Plex will remove these files from disk itself and drop them from its library. This cannot be undone from here.</p>' +
     "<ul class=\"small\" style=\"margin:6px 0 10px;padding-left:18px\">" + entries.map(e => {
       const whole = e.scope === "item" || (e.versions || 0) <= 1;
-      return "<li><b>" + esc(e.title) + "</b> — " + (whole
+      const files = whole ? ((e.item_files && e.item_files.length) ? e.item_files : [{path: e.path, size: e.size}])
+                          : [{path: e.path, size: e.size}];
+      return "<li><b>" + esc(e.title) + "</b>" + (e.server ? ' <span class="dim">on ' + esc(e.server) + "</span>" : "") + " — " + (whole
         ? '<span style="color:var(--red)">WHOLE ITEM: ' + (e.scope === "item"
             ? "every version\u2019s files (" + e.versions + ")"
             : "this file is the item\u2019s only version — the whole item is removed") + "</span>"
         : "this file\u2019s version only") +
-      '<div class="mono dim">' + esc(e.path) + "</div></li>"; }).join("") + "</ul>" +
+      files.map(fileLine).join("") + "</li>"; }).join("") + "</ul>" +
     '<button class="danger" id="btn-plex-del-confirm">Delete ' + entries.length + " via Plex</button> " +
     '<button class="small" id="btn-plex-del-cancel">Cancel</button> <span class="small" id="plex-del-outcome"></span>';
   conf.style.display = "block";
@@ -3813,6 +3823,33 @@ async function refreshHistory(){
     const data = await api.history();
     renderHistory(data.history || []);
   }catch(e){ /* backend not up yet */ }
+  try{
+    const acts = await api.plexDeleteActions();
+    renderPlexDeleteHistory(acts.actions || []);
+  }catch(e){ /* the scan history above already rendered */ }
+}
+// renderPlexDeleteHistory — the Plex delete audit in the
+// History view (v1.5.2, §C.4: the audit "appears in
+// History"). Newest first (the endpoint's order); entries
+// recorded before v1.5.2 simply show no server. An absent
+// log is the honest empty state below.
+function renderPlexDeleteHistory(list){
+  const body = $("plex-del-history-body");
+  if (!body) return;
+  if (!list.length){ body.innerHTML = '<div class="empty">No deletes via Plex recorded yet.</div>'; return; }
+  const outcome = a => {
+    if (a.result === "deleted") return '<span style="color:var(--green)">✓ deleted</span>';
+    if (a.result === "resolved") return '<span style="color:var(--green)">✓ already gone</span>';
+    if (a.result === "refused") return '<span style="color:var(--red)">✗ refused</span>';
+    return '<span style="color:var(--red)">✗ error</span>';
+  };
+  body.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>When</th><th>Item</th><th>Server</th><th>Scope</th><th>Outcome</th><th>Detail</th></tr></thead><tbody>' +
+    list.map(a => "<tr><td class='small'>" + esc((a.time || "").replace("T", " ").replace("Z", "")) + "</td>" +
+      "<td><b>" + esc(a.title || "") + '</b><div class="mono dim small">' + esc(a.path || "") + "</div></td>" +
+      "<td>" + (a.server ? esc(a.server) : '<span class="dim">—</span>') + "</td>" +
+      "<td>" + (a.scope === "item" ? "whole item" : "this version") + "</td>" +
+      "<td>" + outcome(a) + (a.status ? ' <span class="dim small">HTTP ' + a.status + "</span>" : "") + "</td>" +
+      '<td class="small dim">' + esc(a.detail || "") + "</td></tr>").join("") + "</tbody></table></div>";
 }
 $("btn-history-refresh").addEventListener("click", refreshHistory);
 function deltaCell(d){

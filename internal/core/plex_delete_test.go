@@ -36,6 +36,12 @@ type deleteMockPlex struct {
 	rootAllowDeletion *string // root allowMediaDeletion attr (nil = absent)
 	rootOwned         *string // root owned attr (nil = absent)
 	prefsDeletion     *string // /:/prefs allowMediaDeletion Setting (nil = absent)
+
+	// onDelete (v1.5.2 tests) runs after a DELETE is
+	// recorded — a test uses it to flip a server fact
+	// between the batch's preflight and the delete's own
+	// answer, the race §C.4's 403 wording addresses.
+	onDelete func(path string)
 }
 
 func strptr(s string) *string { return &s }
@@ -46,12 +52,17 @@ func newDeleteMockPlex(t *testing.T) *deleteMockPlex {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
+		// The attr pointers are snapshotted under the lock:
+		// a v1.5.2 test flips one mid-flight (see onDelete).
+		m.mu.Lock()
+		allowDel, owned := m.rootAllowDeletion, m.rootOwned
+		m.mu.Unlock()
 		attrs := `friendlyName="Delete Test Plex" machineIdentifier="mock-machine-150" version="9.9.9"`
-		if m.rootAllowDeletion != nil {
-			attrs += fmt.Sprintf(` allowMediaDeletion=%q`, *m.rootAllowDeletion)
+		if allowDel != nil {
+			attrs += fmt.Sprintf(` allowMediaDeletion=%q`, *allowDel)
 		}
-		if m.rootOwned != nil {
-			attrs += fmt.Sprintf(` owned=%q`, *m.rootOwned)
+		if owned != nil {
+			attrs += fmt.Sprintf(` owned=%q`, *owned)
 		}
 		fmt.Fprintf(w, `<?xml version="1.0"?><MediaContainer %s/>`, attrs)
 	})
@@ -95,7 +106,11 @@ func newDeleteMockPlex(t *testing.T) *deleteMockPlex {
 		m.deletes = append(m.deletes, r.Method+" "+r.URL.Path)
 		status, has := m.failWith[r.URL.Path]
 		body := m.failBody[r.URL.Path]
+		hook := m.onDelete
 		m.mu.Unlock()
+		if hook != nil {
+			hook(r.URL.Path)
+		}
 		if has {
 			w.WriteHeader(status)
 			fmt.Fprint(w, body)

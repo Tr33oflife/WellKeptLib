@@ -88,6 +88,7 @@ func newServer(svc *core.Service, page []byte, base string) http.Handler {
 	mux.HandleFunc("POST /api/plex/preflight", s.handlePlexPreflight)
 	mux.HandleFunc("POST /api/plex/matches", s.handlePlexMatches)
 	mux.HandleFunc("POST /api/plex/delete", s.handlePlexDelete)
+	mux.HandleFunc("GET /api/plex/delete-actions", s.handlePlexDeleteActions)
 	// Plex sign-in (v0.3.1) — plex.tv PIN flow: begin -> poll -> choose.
 	mux.HandleFunc("POST /api/plex/signin/begin", s.handlePlexSignInBegin)
 	mux.HandleFunc("GET /api/plex/signin/poll", s.handlePlexSignInPoll)
@@ -625,6 +626,13 @@ func (s *server) handlePlexMatches(w http.ResponseWriter, r *http.Request) {
 // the guarded batch delete. Per-entry outcomes come back
 // in-band — a refused or failed entry is information, not a
 // transport error.
+// handlePlexDeleteActions -> Service.PlexDeleteActions
+// (v1.5.2): the delete audit read back for the History view
+// — newest first; an absent log is an empty list.
+func (s *server) handlePlexDeleteActions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"actions": s.svc.PlexDeleteActions()})
+}
+
 func (s *server) handlePlexDelete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Items []core.PlexDeleteEntry `json:"items"`

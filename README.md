@@ -12,7 +12,7 @@ One static binary. No runtime, no database server, no Docker.
 It runs as a small local web app: a service on your server, a
 double-click `.exe` on Windows.
 
-- **Version:** 1.5.1
+- **Version:** 1.5.2
 - **License:** MIT (see [LICENSE](LICENSE))
 - **Platforms:** Linux x86-64, Linux ARM64, Windows x86-64
 - **Dependencies:** Go standard library only (no third-party
@@ -147,7 +147,12 @@ create, collisions, and skips, before anything is written:**
   that don't match
   a Plex item get no button and no fallback to the
   file-level delete. Every attempt, success or failure,
-  is appended to a local audit log (`plex-delete-actions.json`).
+  is appended to a local audit log (`plex-delete-actions.json`)
+  that names the server it went to, and the log is shown in
+  the History tab. The confirm lists exactly what will go —
+  title, server, file path(s) and size(s) for every entry —
+  and if Plex refuses (403), the app re-checks the preflight
+  and names the fact that changed.
 - **Scan history.** Every completed scan is recorded (up to
   50) with a delta against the previous one — added, removed,
   and changed files — with missing roots handled honestly
@@ -381,7 +386,7 @@ to the internet.
   dedicated test plants secrets and sweeps the settings,
   diagnostics, state, config, and report outputs for leaks.
 - **This repository is the complete source** of the shipped
-  1.5.1 binaries. Three disclosed divergences — in test
+  1.5.2 binaries. Three disclosed divergences — in test
   files and one default: the fixture lookup helper
   additionally accepts this repository's fixtures layout,
   and the fixture generator script ships in `fixtures/`;
@@ -459,55 +464,59 @@ CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -o plex-file-manager-
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.exe .
 ```
 
-## Verification (what was actually checked for 1.5.1)
+## Verification (what was actually checked for 1.5.2)
 
-- Go test suite: **331 top-level tests, all passing**,
+- Go test suite: **339 top-level tests, all passing**,
   counted as `--- PASS` lines from `go test -v ./...` and
-  re-run on this published tree (331 PASS, 0 FAIL);
+  re-run on this published tree (339 PASS, 0 FAIL);
   `go vet` and `gofmt` clean; the race detector is clean
-  (326 carried from 1.5.0 + 5 new reconciliation tests,
-  all against the mock Plex).
-- **The two reconciliations, test-pinned:** a 404 on
-  either delete shape audits as "resolved", marks the
-  row like a 200, and renders "already gone"; a
-  single-version item sends the whole-item DELETE under
-  the default scope *and* under an explicitly picked
-  "version" scope, with the audit recording the scope
-  the action became; a mixed 200/404/403 batch yields
-  deleted / resolved / refused side by side. One named
-  expectation moved: the staged 400 in the refusals test
-  now sits on the single-version item's item path (the
-  only path it sends now); the discipline it pins is
-  unchanged.
+  (331 carried from 1.5.1 + 8 new, all against the mock
+  Plex).
+- **The four closures, test-pinned:** match rows carry
+  server, size, and every version's file (path + size),
+  and the confirm payload is built from them; audit
+  records name their server across all outcomes including
+  client-side refusals (and a hand-written v1.5.1-shaped
+  log still loads, server-less entries intact); the
+  History readback is newest-first with a resolved entry,
+  and a missing log answers an honest empty list over
+  HTTP; a staged mid-flight flip of the server's
+  deletion setting makes the 403 name that exact fact in
+  the outcome *and* the audit, while a 403 with nothing
+  changed says the checks still pass; the fact-naming
+  helper's seven-case truth table is pinned.
 - **Gates:** the 843-basename parser regression and the
   1.4.0 predicate sweep pass untouched — classification
-  did not change in this release, and every pinned
-  1.3.x–1.4.1 flip/refusal stands as it was. Parts A and
-  B (catalog, sizes, thresholds) are behavior-identical
-  to 1.5.0; their expectations are unmodified.
+  did not change, delete semantics are frozen from
+  1.5.0/1.5.1 (every existing mock assertion on exact
+  request paths stands), and Parts A/B are
+  behavior-identical.
 - **Delete via Plex — still verified against mocks
   only.** No real Plex server has been contacted by any
   test, smoke, or check in this project to date (a
   standing rule). Your first delete on your own server
-  remains the live proof, with the audit log as the
-  record.
-- Page checks: 192 ids looked up / 222 defined, all
-  resolve; the Node render harness passes **195/195**
-  (the 1.5.0 battery plus the single-version row having
-  no scope picker, the confirm's whole-item wording for
-  it, and the "already gone" outcome rendering).
-- Shipped-binary smoke: **131/131** — the full carried
-  battery plus the 1.5.1 checks over HTTP against the
-  mock Plex (a 404 resolving, a single-version delete
-  arriving as the item path). The public package's
-  extracted binary passes the same smoke, and the
-  installer walk passes **12/12** (with the honest
+  remains the live proof, with the audit log — now
+  visible in the History tab — as the record.
+- Page checks: 193 ids looked up / 223 defined, all
+  resolve; the Node render harness passes **201/201**
+  in all four Donate-button scenarios (the confirm
+  naming the server and listing every file with its
+  size; History rendering the audit, a "resolved" entry
+  reading "already gone", a legacy server-less entry,
+  and the honest empty state).
+- Shipped-binary smoke: **135/135** — the full carried
+  battery plus the 1.5.2 checks over HTTP against the
+  mock Plex (server/size on match rows, the server named
+  in every audit record, the readback over HTTP, the
+  flipped-setting 403 naming its fact). The public
+  package's extracted binary passes the same smoke, and
+  the installer walk passes **12/12** (with the honest
   limit that `systemctl` is shimmed in the sandbox
   walks).
 - Standalone clone proof: a clean copy of this tree,
   with fixtures generated by the shipped
   `fixtures/generate.sh`, passes `go test ./...` —
-  **329 PASS, 0 FAIL, 2 SKIP** (the two corpus tests, which need the
+  **337 PASS, 0 FAIL, 2 SKIP** (the two corpus tests, which need the
   unshipped real-export corpus; see the transparency
   note).
 - **Default-theme equality, measured:** a headless-Chrome
@@ -647,6 +656,50 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -o plex-file-manager.
 - A first scan of a very large library takes a while (every
   file is probed once). Raise **Probe workers** in Settings
   if it's slow; later scans reuse the cache.
+
+## Release notes — 1.5.2
+
+A four-point patch closing the last gaps between Delete
+via Plex as shipped and as specced. Delete semantics
+themselves are frozen — the request shapes, scope rules,
+and outcome classes of 1.5.0/1.5.1 are untouched.
+
+- **The confirm shows the full picture.** Each entry —
+  single or batch — now lists its title, the server it
+  will be deleted on, and its file path(s) with size(s):
+  for a whole-item entry, every version's file, each with
+  its size. The sizes are the scanned files' own (a match
+  exists because a scanned file *is* the Plex item's
+  file); no figure is derived from anything else.
+- **The audit names its server.** Every record in
+  `plex-delete-actions.json` — deleted, resolved,
+  refused, error, and client-side refusals that never
+  reach the server — now carries the server name. The
+  field is additive: logs written by 1.5.0/1.5.1 read
+  back exactly as written.
+- **The audit appears in History.** The History tab
+  gains a "Deletes via Plex" section (newest first):
+  when, item and path, server (a dash on pre-1.5.2
+  records), scope, outcome in the log's own words —
+  "resolved" reads "✓ already gone" — and the recorded
+  detail. No entries yet renders an honest empty state,
+  and the readback (`GET /api/plex/delete-actions`)
+  answers an empty list when no log exists.
+- **A 403 names what changed.** When Plex refuses a
+  delete, the app re-runs the preflight (reads only —
+  it never writes the setting) and the outcome names the
+  first fact that went stale: no longer signed in or
+  configured, the server no longer answering, ownership
+  lost or unconfirmable, or "Allow media deletion" now
+  off — with the place to change it. If every check
+  still passes, it says so plainly: Plex refused anyway.
+  One honest limit: if two facts changed at once, only
+  the first is named; the second surfaces after the
+  first is fixed and a delete is refused again.
+- With this release, the feature's spec record stands
+  fully reconciled — every point in it is now true of
+  the shipped behavior. Verification remains mock-only;
+  no real Plex server has been contacted.
 
 ## Release notes — 1.5.1
 
