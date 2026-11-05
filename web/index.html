@@ -2841,7 +2841,9 @@ function renderPlexDelMatches(r){
         "<td>" + esc(m.section) + "</td><td>" + (m.versions > 1 ? m.versions + " versions" : "1") + '</td>' +
         '<td class="mono dim">' + esc(m.path) + "</td>" +
         "<td>" + (m.deleted_pending_rescan ? "" :
-          '<select class="plex-del-scope" data-i="' + i + '"><option value="version">this file\u2019s version</option><option value="item">whole item — ALL versions</option></select>') + "</td></tr>"
+          (m.versions > 1
+            ? '<select class="plex-del-scope" data-i="' + i + '"><option value="version">this file\u2019s version</option><option value="item">whole item — ALL versions</option></select>'
+            : '<span class="dim small">whole item — its only version</span>')) + "</td></tr>"
       ).join("") + "</tbody></table>" +
       '<div class="toolbar" style="margin-top:10px"><button class="small danger" id="btn-plex-del-batch">Delete selected via Plex</button>' +
       '<span class="dim small" id="plex-del-batch-note"></span></div>';
@@ -2863,16 +2865,23 @@ function renderPlexDelMatches(r){
 
 // showPlexDelConfirm lists EVERYTHING the batch will do —
 // each file, and for whole-item rows the fact that every
-// version's files go — before anything is sent.
+// version's files go — before anything is sent. A
+// single-version item is ALWAYS a whole-item removal
+// (the spec's rule: deleting its only version IS deleting
+// the item), so its row says so in the same red wording
+// even when the row's scope choice said "version".
 function showPlexDelConfirm(entries){
   const conf = $("plex-del-confirm");
   conf.innerHTML = "<b>Delete through Plex — please check this list.</b>" +
     '<p class="small" style="margin:6px 0">Plex will remove these files from disk itself and drop them from its library. This cannot be undone from here.</p>' +
-    "<ul class=\"small\" style=\"margin:6px 0 10px;padding-left:18px\">" + entries.map(e =>
-      "<li><b>" + esc(e.title) + "</b> — " + (e.scope === "item"
-        ? '<span style="color:var(--red)">WHOLE ITEM: every version\u2019s files (' + e.versions + ")</span>"
+    "<ul class=\"small\" style=\"margin:6px 0 10px;padding-left:18px\">" + entries.map(e => {
+      const whole = e.scope === "item" || (e.versions || 0) <= 1;
+      return "<li><b>" + esc(e.title) + "</b> — " + (whole
+        ? '<span style="color:var(--red)">WHOLE ITEM: ' + (e.scope === "item"
+            ? "every version\u2019s files (" + e.versions + ")"
+            : "this file is the item\u2019s only version — the whole item is removed") + "</span>"
         : "this file\u2019s version only") +
-      '<div class="mono dim">' + esc(e.path) + "</div></li>").join("") + "</ul>" +
+      '<div class="mono dim">' + esc(e.path) + "</div></li>"; }).join("") + "</ul>" +
     '<button class="danger" id="btn-plex-del-confirm">Delete ' + entries.length + " via Plex</button> " +
     '<button class="small" id="btn-plex-del-cancel">Cancel</button> <span class="small" id="plex-del-outcome"></span>';
   conf.style.display = "block";
@@ -2884,9 +2893,9 @@ function showPlexDelConfirm(entries){
       const res = await api.plexDelete(entries.map(e => ({path: e.path, scope: e.scope})));
       const ok = (res.outcomes || []).filter(o => o.ok).length;
       out.innerHTML = (res.outcomes || []).map(o =>
-        '<div>' + (o.ok ? '<span style="color:var(--green)">✓ deleted</span> ' : '<span style="color:var(--red)">✗ not deleted</span> ') +
+        '<div>' + (o.ok ? (o.status === 404 ? '<span style="color:var(--green)">✓ already gone</span> ' : '<span style="color:var(--green)">✓ deleted</span> ') : '<span style="color:var(--red)">✗ not deleted</span> ') +
         esc(o.path) + (o.detail ? ' <span class="dim">— ' + esc(o.detail) + "</span>" : "") + "</div>").join("") +
-        '<div style="margin-top:4px">' + ok + " of " + (res.outcomes || []).length + " deleted. Rows stay listed, marked, until the next scan — the files themselves are already gone.</div>";
+        '<div style="margin-top:4px">' + ok + " of " + (res.outcomes || []).length + " done — deleted through Plex, or already gone there. Rows stay listed, marked, until the next scan — the files themselves are already gone.</div>";
       // Re-run the match fetch so the marks show.
       try{
         const r2 = await api.plexMatches();

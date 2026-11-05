@@ -402,8 +402,13 @@ func TestPlexDelete150ServerRefusalsSurfaced(t *testing.T) {
 	m.rootAllowDeletion = strptr("1")
 	m.failWith["/library/metadata/10/media/100"] = 403
 	m.failBody["/library/metadata/10/media/100"] = "Deletion is not allowed on this server"
-	m.failWith["/library/metadata/11/media/110"] = 400
-	m.failBody["/library/metadata/11/media/110"] = "Bad request: file is locked"
+	// v1.5.1: Solo has exactly one version, so its delete
+	// is the ITEM delete — the 400 is staged on the item
+	// path §C.4 sends (this expectation moved with the
+	// single-version fix; the 400 discipline it pins is
+	// unchanged).
+	m.failWith["/library/metadata/11"] = 400
+	m.failBody["/library/metadata/11"] = "Bad request: file is locked"
 	svc := deleteSvc150(t, m)
 	if _, err := svc.PlexMatches(); err != nil {
 		t.Fatal(err)

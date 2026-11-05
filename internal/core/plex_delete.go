@@ -32,19 +32,30 @@ package core
 //     file's own media VERSION (DELETE .../media/{mediaId});
 //     deleting the whole ITEM (every version's files) is a
 //     separate, explicit scope the caller must choose per
-//     entry. Batches are allowed (§5 ruling): one call, one
-//     confirm in the UI listing everything — the service
-//     then attempts each entry in order.
+//     entry. ONE exception, §C.4's own rule (restored spec,
+//     reconciled in v1.5.1): when the matched item has
+//     exactly one version, the action BECOMES the item
+//     delete (DELETE /library/metadata/{ratingKey}) —
+//     deleting its only version and deleting the item are
+//     the same act, and the item shape is the one that
+//     leaves no empty shell behind. The outcome and the
+//     audit record the scope the action became. Batches
+//     are allowed (§5 ruling): one call, one confirm in
+//     the UI listing everything — the service then
+//     attempts each entry in order.
 //   - EVERY attempt — success, refusal, server error — is
 //     audited to plex-delete-actions.json in the data dir.
 //     Server refusals surface with their status and the
 //     server's own words, never swallowed (§C.1's 403/400
-//     discipline).
-//   - A successful delete does NOT rewrite the scan: the
-//     file's row stays and is marked deleted-pending-rescan
-//     in the matches view. The next scan is what removes it
-//     everywhere (the file really is gone from disk — Plex
-//     removed it).
+//     discipline). A 404 is neither: the item is already
+//     gone, so the attempt is RESOLVED — recorded as
+//     "resolved", marked like a success, and said so in
+//     the outcome (§C.4; reconciled in v1.5.1).
+//   - A successful (or resolved) delete does NOT rewrite
+//     the scan: the file's row stays and is marked
+//     deleted-pending-rescan in the matches view. The next
+//     scan is what removes it everywhere (the file really
+//     is gone from disk — Plex removed it, or already had).
 //
 // Token secrecy and transport separation are unchanged: the
 // views below have no token field, and no method takes or
@@ -296,7 +307,11 @@ func (s *Service) PlexMatches() (PlexMatchResult, error) {
 // file path and its scope — "version" (only this file's
 // media version; the default, and what an empty scope
 // means) or "item" (the whole Plex item: every version's
-// files go). Item scope is never implied; it must be named.
+// files go). Item scope is never implied for a multi-version
+// item; it must be named. For a SINGLE-version item the
+// distinction does not exist (§C.4): a "version" request
+// resolves to the item delete, and the outcome reports the
+// scope the action became.
 type PlexDeleteEntry struct {
 	Path  string `json:"path"`
 	Scope string `json:"scope,omitempty"` // "version" | "item"
@@ -304,7 +319,9 @@ type PlexDeleteEntry struct {
 
 // PlexDeleteOutcome is one entry's result: what was asked,
 // whether Plex did it, and — when not — the refusal or the
-// server's answer, in words.
+// server's answer, in words. OK is true both when Plex
+// deleted the item (2xx) and when Plex reported it already
+// gone (404 — resolved; the Detail says which).
 type PlexDeleteOutcome struct {
 	Path   string `json:"path"`
 	Scope  string `json:"scope"`
@@ -336,7 +353,7 @@ type PlexDeleteAction struct {
 	Scope     string `json:"scope"` // "version" | "item"
 	RatingKey string `json:"rating_key,omitempty"`
 	MediaID   string `json:"media_id,omitempty"`
-	Result    string `json:"result"` // "deleted" | "refused" | "error"
+	Result    string `json:"result"` // "deleted" | "resolved" | "refused" | "error"
 	Status    int    `json:"status,omitempty"`
 	Detail    string `json:"detail,omitempty"`
 }
@@ -447,8 +464,19 @@ func (s *Service) PlexDelete(entries []PlexDeleteEntry) PlexDeleteResult {
 			finish()
 			continue
 		}
+		// §C.4's single-version rule: when the matched item
+		// has exactly one version, the action becomes the
+		// item delete — whatever scope was named, the item
+		// DELETE is what is sent, and the outcome + audit
+		// record the scope the action became.
+		effScope := scope
+		if effScope == "version" && m.Versions <= 1 {
+			effScope = "item"
+			out.Scope = effScope
+			rec.Scope = effScope
+		}
 		var delPath string
-		if scope == "item" {
+		if effScope == "item" {
 			delPath = "/library/metadata/" + url.PathEscape(m.RatingKey)
 		} else {
 			if m.MediaID == "" {
@@ -458,20 +486,14 @@ func (s *Service) PlexDelete(entries []PlexDeleteEntry) PlexDeleteResult {
 			}
 			delPath = "/library/metadata/" + url.PathEscape(m.RatingKey) + "/media/" + url.PathEscape(m.MediaID)
 		}
-		status, body, err := client.del(delPath)
-		switch {
-		case err != nil:
-			rec.Result = "error"
-			out.Detail = err.Error()
-		case status >= 200 && status < 300:
-			rec.Result = "deleted"
-			out.OK = true
-			out.Status = status
-			// Mark the row(s) deleted-pending-rescan: this
-			// file, and for an item delete every version's
-			// files with it.
+		// markDeleted records the deleted-pending-rescan
+		// marks for a delete that took effect (a 2xx, or a
+		// 404 resolved): this file, and for an item delete
+		// every version's files with it.
+		markDeleted := func() {
 			s.mu.Lock()
-			if scope == "item" {
+			defer s.mu.Unlock()
+			if effScope == "item" {
 				kin := []string{}
 				for path, other := range snapshot {
 					if other.RatingKey == m.RatingKey {
@@ -482,7 +504,32 @@ func (s *Service) PlexDelete(entries []PlexDeleteEntry) PlexDeleteResult {
 			} else {
 				s.markPlexDeletedLocked(entry.Path)
 			}
-			s.mu.Unlock()
+		}
+		status, body, err := client.del(delPath)
+		switch {
+		case err != nil:
+			rec.Result = "error"
+			out.Detail = err.Error()
+		case status >= 200 && status < 300:
+			rec.Result = "deleted"
+			out.OK = true
+			out.Status = status
+			markDeleted()
+		case status == 404:
+			// §C.4: 404 = already gone — treat as resolved,
+			// say so. The end state is the one the user
+			// asked for, so the attempt records as
+			// "resolved" (not "deleted": Plex did not
+			// delete anything just now) and the row is
+			// marked exactly as a success marks it.
+			rec.Result = "resolved"
+			out.OK = true
+			out.Status = status
+			out.Detail = "already gone in Plex — treated as resolved"
+			if body != "" {
+				out.Detail += ": " + truncateDetail(body)
+			}
+			markDeleted()
 		case status == 403:
 			// §C.1: deletion not allowed by the server's
 			// options. Surfaced, never worked around.
